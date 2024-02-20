@@ -10,6 +10,7 @@ This code is a stand-alone Image Fuzzer for XNU Research.
 - Works on iPad Pro - M2 Chip
 - Works on iPhone 12 Pro, 14 Pro Max & 15 Pro Max
 - arm64e code for Fuzzing, Learning or Education
+- PermaLink https://srd.cx/xnu-image-fuzzer/
 
 ## Quick Start
 - Create a new iOS Application in Xcode
