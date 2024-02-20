@@ -14,13 +14,28 @@ This code is a stand-alone Image Fuzzer for XNU Research.
 ## Quick Start
 - Create a new iOS Application in Xcode
 - Copy the Source File and Paste into main.m
-- Copy the Flowers.exr, amd any UTT Image File Type into your XCode Project
+- Copy the Flowers.exr, and any UTT Image File Type into your XCode Project
 - Edit the Scheme
   - For Arguements on Launch
     - Flowers.exr, or any UTT Image File Type
     - -1
 - Build & Run
 - You can look at the pictures below to make sure you have added the Args Passed on Launch correctly.
+
+## Roadmap
+- Add enhanced logging to other Function Contexts
+- Create Function Context Templates
+- Create Memory Debugging Templates
+- Integrate with Instrumentation
+- Add Rendering via StoryBoard
+  - Display Seed Image
+  - Display Fuzzed Image
+  - Fuzzing Instrumentation
+- Distributed Fuzzing
+  - Pull Seeds
+  - Push PoC's
+  - Analytics
+- Crash Analysis
 
 ## Background
 I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this C++ XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I imcrased this Fuzzer Scope, enjoy!
