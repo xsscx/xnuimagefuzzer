@@ -13,41 +13,27 @@ This code is a stand-alone Image Fuzzer for XNU Research.
 
 ## Quick Start
 - Create a new iOS Application in Xcode
-- Copy the Source File and Paste into main.m [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/cx.srd.img-fuzz-001/cx.srd.img-fuzz-001/cx.srd.img-fuzz-001/main.m]
-- Copy the Flowers.exr image into your XCode Project
+- Copy the Source File and Paste into main.m
+- Copy the Flowers.exr, amd any UTT Image File Type into your XCode Project
 - Edit the Scheme
   - For Arguements on Launch
-    - Flowers.exr
+    - Flowers.exr, or any UTT Image File Type
     - -1
 - Build & Run
 - You can look at the pictures below to make sure you have added the Args Passed on Launch correctly.
 
-## C++ Source Code
-https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/cx.srd.img-fuzz-001/cx.srd.img-fuzz-001/cx.srd.img-fuzz-001/main.m
-
 ## Background
-I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this C++ XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I imcrased this Fuzzer Scope, enjoy!
+I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this C++ XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I imcrased this Fuzzer Scope, enjoy!
 
 This Project is for anyone wanting to Learn C++ or XNU Image Fuzzing. 
 
-You can use Jackalope with the Example code provided higher up the Repo in Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m], and have your own Code running the XNU Image Fuzzer to expand your horizons.
+You can use Jackalope with the Example code provided in my macOS Research Repo in Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m], and have your own Code running the XNU Image Fuzzer to expand your horizons.
 
 Are you new to XNU? 
 
 This Code is for you!
 
 If you have Questions, then Open an Issue. 
-
-This Code is meant to stimulate discussion on the Bugs that can be hit from the Remote, No-Auth position.
-
-### Overview
-This is an XCode Project contianing a iOS Proof of Concept Fuzzer for the CreateCG Image and CGColorSpace Context
-The Args passed on Launch are:
-- Flowers.exr
-- -1
-- Change the second arg to shift thru the fuzzer manually
-
-This code provides the basis for anyone to take and begin their own exploration of the XNU Image & Video Handling Code, which offer a massive exploit surface opportunity to find Bugs that may not yet be known to Apple :-)
 
 ### XNU Image Fuzzer Pictures
 - XNU Image Fuzzer Xcode Sample 1
