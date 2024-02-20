@@ -1,0 +1,393 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1DE209042B867C4700A3C0D5 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209032B867C4700A3C0D5 /* AppDelegate.m */; };
+		1DE209072B867C4700A3C0D5 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209062B867C4700A3C0D5 /* SceneDelegate.m */; };
+		1DE2090A2B867C4700A3C0D5 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209092B867C4700A3C0D5 /* ViewController.m */; };
+		1DE2090D2B867C4700A3C0D5 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1DE2090B2B867C4700A3C0D5 /* Main.storyboard */; };
+		1DE209122B867C4800A3C0D5 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1DE209102B867C4800A3C0D5 /* LaunchScreen.storyboard */; };
+		1DE209152B867C4800A3C0D5 /* xnuimagefuzzer.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */; };
+		1DE209382B867CF900A3C0D5 /* Flowers.exr in Resources */ = {isa = PBXBuildFile; fileRef = 1DE209372B867CF900A3C0D5 /* Flowers.exr */; };
+		1DEB07A52B90E40F001AAF5D /* 2225.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1DEB07A42B90E40F001AAF5D /* 2225.jpg */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "XNU Image Fuzzer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1DE209022B867C4700A3C0D5 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		1DE209032B867C4700A3C0D5 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		1DE209052B867C4700A3C0D5 /* SceneDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		1DE209062B867C4700A3C0D5 /* SceneDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
+		1DE209082B867C4700A3C0D5 /* ViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
+		1DE209092B867C4700A3C0D5 /* ViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
+		1DE2090C2B867C4700A3C0D5 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		1DE209112B867C4800A3C0D5 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		1DE209132B867C4800A3C0D5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = xnuimagefuzzer.m; sourceTree = "<group>"; };
+		1DE209372B867CF900A3C0D5 /* Flowers.exr */ = {isa = PBXFileReference; lastKnownFileType = file; path = Flowers.exr; sourceTree = "<group>"; };
+		1DEB07A42B90E40F001AAF5D /* 2225.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = 2225.jpg; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		1DE208FC2B867C4700A3C0D5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1DE208F62B867C4700A3C0D5 = {
+			isa = PBXGroup;
+			children = (
+				1DE209012B867C4700A3C0D5 /* XNU Image Fuzzer */,
+				1DE209002B867C4700A3C0D5 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		1DE209002B867C4700A3C0D5 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1DE209012B867C4700A3C0D5 /* XNU Image Fuzzer */ = {
+			isa = PBXGroup;
+			children = (
+				1DE209022B867C4700A3C0D5 /* AppDelegate.h */,
+				1DE209032B867C4700A3C0D5 /* AppDelegate.m */,
+				1DE209052B867C4700A3C0D5 /* SceneDelegate.h */,
+				1DE209062B867C4700A3C0D5 /* SceneDelegate.m */,
+				1DE209082B867C4700A3C0D5 /* ViewController.h */,
+				1DE209092B867C4700A3C0D5 /* ViewController.m */,
+				1DE2090B2B867C4700A3C0D5 /* Main.storyboard */,
+				1DE209102B867C4800A3C0D5 /* LaunchScreen.storyboard */,
+				1DE209132B867C4800A3C0D5 /* Info.plist */,
+				1DEB07A42B90E40F001AAF5D /* 2225.jpg */,
+				1DE209372B867CF900A3C0D5 /* Flowers.exr */,
+				1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */,
+			);
+			path = "XNU Image Fuzzer";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1DE208FE2B867C4700A3C0D5 /* XNU Image Fuzzer */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1DE2092E2B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image Fuzzer" */;
+			buildPhases = (
+				1DE208FB2B867C4700A3C0D5 /* Sources */,
+				1DE208FC2B867C4700A3C0D5 /* Frameworks */,
+				1DE208FD2B867C4700A3C0D5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "XNU Image Fuzzer";
+			productName = "XNU Image Fuzzer";
+			productReference = 1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		1DE208F72B867C4700A3C0D5 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					1DE208FE2B867C4700A3C0D5 = {
+						CreatedOnToolsVersion = 15.2;
+					};
+				};
+			};
+			buildConfigurationList = 1DE208FA2B867C4700A3C0D5 /* Build configuration list for PBXProject "XNU Image Fuzzer" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 1DE208F62B867C4700A3C0D5;
+			productRefGroup = 1DE209002B867C4700A3C0D5 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1DE208FE2B867C4700A3C0D5 /* XNU Image Fuzzer */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1DE208FD2B867C4700A3C0D5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1DE209122B867C4800A3C0D5 /* LaunchScreen.storyboard in Resources */,
+				1DEB07A52B90E40F001AAF5D /* 2225.jpg in Resources */,
+				1DE209382B867CF900A3C0D5 /* Flowers.exr in Resources */,
+				1DE2090D2B867C4700A3C0D5 /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1DE208FB2B867C4700A3C0D5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1DE2090A2B867C4700A3C0D5 /* ViewController.m in Sources */,
+				1DE209042B867C4700A3C0D5 /* AppDelegate.m in Sources */,
+				1DE209152B867C4800A3C0D5 /* xnuimagefuzzer.m in Sources */,
+				1DE209072B867C4700A3C0D5 /* SceneDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		1DE2090B2B867C4700A3C0D5 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				1DE2090C2B867C4700A3C0D5 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		1DE209102B867C4800A3C0D5 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				1DE209112B867C4800A3C0D5 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		1DE2092C2B867C4800A3C0D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				ALWAYS_SEARCH_USER_PATHS = YES;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_PROFILING_CODE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
+				SUPPORTS_MACCATALYST = YES;
+			};
+			name = Debug;
+		};
+		1DE2092D2B867C4800A3C0D5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALLOW_TARGET_PLATFORM_SPECIALIZATION = YES;
+				ALWAYS_SEARCH_USER_PATHS = YES;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SELECTED_FILES = "";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_PROFILING_CODE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphonesimulator iphoneos";
+				SUPPORTS_MACCATALYST = YES;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		1DE2092F2B867C4800A3C0D5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "XNU Image Fuzzer/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = cx.srd.xnuimagefuzzer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1DE209302B867C4800A3C0D5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 10;
+				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "XNU Image Fuzzer/Info.plist";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = cx.srd.xnuimagefuzzer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1DE208FA2B867C4700A3C0D5 /* Build configuration list for PBXProject "XNU Image Fuzzer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1DE2092C2B867C4800A3C0D5 /* Debug */,
+				1DE2092D2B867C4800A3C0D5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1DE2092E2B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image Fuzzer" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1DE2092F2B867C4800A3C0D5 /* Debug */,
+				1DE209302B867C4800A3C0D5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 1DE208F72B867C4700A3C0D5 /* Project object */;
+}
