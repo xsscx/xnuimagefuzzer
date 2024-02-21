@@ -552,9 +552,11 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
 }
 
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
-    NSLog(@"Creating bitmap context with Premultiplied First Alpha settings and applying fuzzing");
+    NSLog(@"Creating bitmap context with Premultiplied First Alpha settings");
 
-    // Validate input image
+    // Initial memory debug call to monitor memory usage before processing
+    debugMemoryHandling();
+
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
         return;
@@ -562,35 +564,43 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    size_t bytesPerRow = width * 4; // Assuming 4 bytes per pixel (RGBA)
+    // Calculating bytes per row, assuming 4 bytes per pixel (RGBA)
+    size_t bytesPerRow = width * 4;
 
-    // Allocate memory for raw image data
+    // Allocate memory for the raw image data
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
+        // Memory debug call after a failed allocation to assess the system's memory state
+        debugMemoryHandling();
         return;
     }
 
-    // Create color space and context with premultiplied first alpha settings
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
-        free(rawData);
+        free(rawData); // Ensure to free allocated memory to prevent leaks
+        debugMemoryHandling();
         return;
     }
 
+    // Define bitmap information with premultiplied first alpha and specific byte order
     CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
-    CGColorSpaceRelease(colorSpace);
 
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
+        CGColorSpaceRelease(colorSpace);
+        debugMemoryHandling();
         return;
     }
 
-    // Draw the image into the context
+    // Drawing the image into the context
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+
+    // After drawing the image, it's beneficial to call debugMemoryHandling to check the memory state
+    debugMemoryHandling();
 
     // Apply fuzzing logic to the raw data directly
     NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
@@ -611,9 +621,16 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
         NSLog(@"Modified UIImage created and saved successfully.");
     }
 
-    // Clean-up
+    // Clean up and release resources after processing is complete
     CGContextRelease(ctx);
+    CGColorSpaceRelease(colorSpace);
     free(rawData);
+    
+    // Final memory debug call to monitor memory cleanup effectiveness
+     debugMemoryHandling();
+
+     NSLog(@"Bitmap context with Premultiplied First Alpha settings created and processed");
+
 }
 
 void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
