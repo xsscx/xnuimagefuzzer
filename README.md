@@ -1,15 +1,8 @@
 # XNU Image Fuzzer 
 
-Last Updated: February 20, 2024, 1434 EST
+Last Updated: February 21, 2024, 0917 EST
 
-This code is a stand-alone Image Fuzzer for XNU Research.
-- This was built as a Cross Check for various Pixel functions
-- Stand alone iOS App, command line with a default storyboard
-- Xcode Project .. ready to compile...
-- Got Questions? Open an Issue
-- Works on iPad Pro - M2 Chip
-- Works on iPhone 12 Pro, 14 Pro Max & 15 Pro Max
-- arm64e code for Fuzzing, Learning or Education
+The Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines.
 - PermaLink https://srd.cx/xnu-image-fuzzer/
 
 ## Quick Start
