@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Basic app information -->
+    <key>CFBundleDisplayName</key>
+    <string>xnuimagefuzzer</string>
+    <key>CFBundleIdentifier</key>
+    <string>cx.srd.xnuimagefuzzer</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>${EXECUTABLE_NAME}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Required for debugging -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+        <key>UISceneConfigurations</key>
+        <dict>
+            <key>UIWindowSceneSessionRoleApplication</key>
+            <array>
+                <dict>
+                    <key>UISceneConfigurationName</key>
+                    <string>Default Configuration</string>
+                    <key>UISceneDelegateClassName</key>
+                    <string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+                </dict>
+            </array>
+        </dict>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <!-- Permissions -->
+    <!-- Add keys for any permissions your app requires, e.g., camera access -->
+
+    <!-- Enable Address Sanitizer, if using -->
+    <key>UIInterfaceOrientation</key>
+    <string>UIInterfaceOrientationPortrait</string>
+    <key>com.apple.developer.asan</key>
+    <true/>
+
+    <!-- For use with Xcode's memory debugger -->
+    <key>NSZombieEnabled</key>
+    <true/>
+    <key>NSDebugEnabled</key>
+    <true/>
+    <key>NSAssertsEnabled</key>
+    <true/>
+
+    <!-- Add other debugging or configuration keys as needed -->
+</dict>
+</plist>
