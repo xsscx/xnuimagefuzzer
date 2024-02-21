@@ -7,7 +7,6 @@
 # cd build
 # cmake ..  -G  Xcode
 # cmake --build . --config Debug
-# Reminder to Open the Xcode Project, Configure Signing, or in Terminal
 # 
 #
 #
@@ -20,6 +19,7 @@ execute_process(COMMAND xcrun --sdk iphoneos --show-sdk-path OUTPUT_VARIABLE IOS
 set(CMAKE_OSX_SYSROOT "${IOS_SDK_ROOT}")
 set(CMAKE_OSX_ARCHITECTURES arm64)
 set(CMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "14.2")
+set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "YOUR_TEAM_ID")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   # Enable debug symbols
