@@ -243,13 +243,13 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
             switch (fuzzMethod) {
                 case 0: // Additive noise
                     for (int i = 0; i < 4; i++) {
-                        float noise = ((float)arc4random() / UINT32_MAX) * 2.0f - 1.0f; // Noise range [-1, 1]
+                        float noise = (float)(((double)arc4random() / UINT32_MAX) * 2.0 - 1.0); // Noise range [-1, 1]
                         rawData[pixelIndex + i] += noise;
                     }
                     break;
                 case 1: // Multiplicative noise (scale)
                     for (int i = 0; i < 4; i++) {
-                        float scale = ((float)arc4random() / UINT32_MAX) * 2.0f; // Scale range [0, 2]
+                        float scale = (float)(((double)arc4random() / UINT32_MAX) * 2.0); // Scale range [0, 2]
                         rawData[pixelIndex + i] *= scale;
                     }
                     break;
