@@ -1,10 +1,8 @@
 /**
- * @file       xnuimagefuzzer.m
+ * @file       ios-image-fuzzer-example.m
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
- * @date       Modified 20 FEB 2024 | 1557 EST
- *
- * Released under GNU GPL V3 License 
+ * @date       Modified 29 Nov 2023 | 1733 EST
  *
  * Detailed description of the file, if necessary.
  *
@@ -14,13 +12,13 @@
  * - [27/11/2023] [h02332] - Removed Grayscale Feature pending Implementation
  * - [28/11/2023] [h02332] - Refactor Code & fuzzing
  * - [29/11/2023] [h02332] - Refactor Code & fuzzing & logging
- * - [20/02/2024] [h02332] - Republish to Repo [https://github.com/xsscx/imagefuzzer]
  *
  * @section    TODO
  * - [ ] Grayscale Implementation
  * - [ ] ICC Color Profiles
- * - [ ] Refactor Example Fuzzer into 2 Functions
+ * - [ ] Refactor Example Fuzzer
  * - [ ] Add Logging Toggle as global variable  - testing in createBitmapContextStandardRGB function
+ * Compile : xcrun -sdk iphoneos clang -arch arm64 -framework UIKit -framework Foundation -framework CoreGraphics -miphoneos-version-min=12.0 -g -o imagefuzzer ios-image-fuzzer-example.m  interpose.dylib
  *
  */
 
@@ -36,7 +34,7 @@
 #define MAX_PERMUTATION 12
 
 // Global variable to control verbosity
-int verboseLogging = 0; // Set to 1 for detailed logging, 0 for minimal logging
+int verboseLogging = 1; // Set to 1 for detailed logging, 0 for minimal logging
 
 // Function declarations
 BOOL isValidImagePath(NSString *path);
@@ -264,9 +262,21 @@ void debugMemoryHandling(void) {
     }
 }
 
+void saveFuzzedImage(UIImage *image) {
+    NSData *imageData = UIImagePNGRepresentation(image);
+    NSString *filePath = [createUniqueDirectoryForSavingImages() stringByAppendingPathComponent:@"fuzzed_image.png"];
+    BOOL success = [imageData writeToFile:filePath atomically:YES];
+    if (success) {
+        NSLog(@"Fuzzed image saved to %@", filePath);
+    } else {
+        NSLog(@"Failed to save fuzzed image");
+    }
+}
+
 int main(int argc, const char * argv[]) {
     NSLog(@"Starting up...");
     debugMemoryHandling(); // Call the debug function
+    setenv("CGBITMAP_CONTEXT_LOG_ERRORS", "1", 1);
     setenv("CG_PDF_VERBOSE", "1", 1);
     setenv("CG_CONTEXT_SHOW_BACKTRACE", "1", 1);
     setenv("CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR", "1", 1);
@@ -461,92 +471,69 @@ void processImage(UIImage *image, int permutation) {
 }
 
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
-//    debugMemoryHandling(); // Call the debug function
     NSLog(@"Creating bitmap context with Standard RGB settings and applying fuzzing");
+
+    // Validate input image
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    size_t bytesPerRow = width * 4; // 4 bytes per pixel for RGBA
-    unsigned char *rawData = (unsigned char *)malloc(height * bytesPerRow);
+    size_t bytesPerRow = width * 4; // Assuming 4 bytes per pixel (RGBA)
 
+    // Allocate memory for raw image data
+    unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
         return;
     }
 
-    // Updated bitmap context parameters
+    // Create color space and context
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGImageByteOrder16Little;
-    size_t bitsPerComponent = 16;
-//    size_t bitsPerPixel = 64;
-
-    CGContextRef ctx = CGBitmapContextCreate(nil, width, height, bitsPerComponent, 0, colorSpace, bitmapInfo);
-    CGColorSpaceRelease(colorSpace);
-
-    if (!ctx) {
-        NSLog(@"Failed to create bitmap context with Standard RGB settings");
+    if (!colorSpace) {
+        NSLog(@"Failed to create color space");
+        free(rawData);
         return;
     }
 
-    // Get the raw data from the context
-    if (!rawData) {
-        NSLog(@"Failed to get raw data from the bitmap context");
-        CGContextRelease(ctx);
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create bitmap context");
+        free(rawData);
         return;
     }
 
     // Draw the image into the context
-    NSLog(@"Drawing image into the bitmap context");
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
 
-    // Log pixel data before fuzzing
-    logPixelData(rawData, width, height, "Before fuzzing");
-
-    // Apply fuzzing logic
-    NSLog(@"Applying secondary fuzzing logic to the bitmap context");
+    // Apply fuzzing logic to the raw data directly
+    NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
     applyEnhancedFuzzingToBitmapContext(rawData, width, height, verboseLogging);
 
-    // Log pixel data after fuzzing
-    logPixelData(rawData, width, height, "After fuzzing");
+    // Create a new image from the modified context
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        
+        // Save the fuzzed image
+        saveFuzzedImage(newImage);
 
-    // Optionally, you can convert back to UIImage to see the result
-        NSLog(@"Creating CGImage from the modified bitmap context");
-        CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
-        if (!newCgImg) {
-            NSLog(@"Failed to create CGImage from context");
-        } else {
-            UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
-            CGImageRelease(newCgImg);
-            
-            // Save the fuzzed image
-            NSData *imageData = UIImagePNGRepresentation(newImage);
-            NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-            NSString *filePath = [documentsDirectory stringByAppendingPathComponent:@"fuzzed_image.png"];
-            BOOL success = [imageData writeToFile:filePath atomically:YES];
-            if (success) {
-                NSLog(@"Fuzzed image saved to %@", filePath);
-            } else {
-                NSLog(@"Failed to save fuzzed image");
-            }
-
-        // Here, newImage contains the modified image
-        // You can log or use newImage as needed
-        NSLog(@"Modified UIImage created successfully");
-
-        // Example: Logging newImage details
-        NSLog(@"New image size: %@, scale: %f, rendering mode: %ld",
-              NSStringFromCGSize(newImage.size),
-              newImage.scale,
-              (long)newImage.renderingMode);
+        // Clean-up and logging
+        NSLog(@"Modified UIImage created and saved successfully.");
     }
 
+    // Clean-up
     CGContextRelease(ctx);
-
-    NSLog(@"Bitmap context processing complete");
-
-    // Log or do something with newImage if needed
-    NSLog(@"Bitmap context with Standard RGB settings created and fuzzing applied");
+    free(rawData);
 }
-
 
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with Premultiplied First Alpha settings and applying fuzzing");
@@ -843,3 +830,4 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     NSLog(@"Bitmap context with 32-bit float, 4-component settings created successfully");
     CGContextRelease(ctx);
 }
+
