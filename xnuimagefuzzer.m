@@ -12,7 +12,9 @@
  * - [27/11/2023] [h02332] - Removed Grayscale Feature pending Implementation
  * - [28/11/2023] [h02332] - Refactor Code & fuzzing
  * - [29/11/2023] [h02332] - Refactor Code & fuzzing & logging
- * - [20/02/2023] [h02332] - Refactor Code & fuzzing & logging
+ * - [20/02/2024] [h02332] - Refactor Code & fuzzing & logging
+ * - [21/02/2024] [h02332] - Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & other programming mistakes 
+ * - [21/02/2024] [h02332] - PermaLink https://srd.cx/xnu-image-fuzzer/
  *
  * @section    TODO
  * - [ ] Grayscale Implementation
