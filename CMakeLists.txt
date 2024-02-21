@@ -44,9 +44,9 @@ endif()
 add_executable(xnuimagefuzzer main.m) # Executable name changed to xnuimagefuzzer
 
 # Set the path to the Info.plist file
-set_target_properties(xnuimagefuzzer PROPERTIES
-  MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist
-)
+# set_target_properties(xnuimagefuzzer PROPERTIES
+#  MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist
+# )
 
 # Since your project targets iOS, ensure it links against the correct frameworks
 if(APPLE)
