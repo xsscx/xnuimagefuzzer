@@ -1,5 +1,5 @@
 /**
- * @file       ios-image-fuzzer-example.m
+ * @file       xnuimagefuzzer.m
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 20 FEB 2024 | 2000 EST
@@ -13,7 +13,7 @@
  * - [28/11/2023] [h02332] - Refactor Code & fuzzing
  * - [29/11/2023] [h02332] - Refactor Code & fuzzing & logging
  * - [20/02/2024] [h02332] - Refactor Code & fuzzing & logging
- * - [21/02/2024] [h02332] - Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & other programming mistakes 
+ * - [21/02/2024] [h02332] - Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes
  * - [21/02/2024] [h02332] - PermaLink https://srd.cx/xnu-image-fuzzer/
  *
  * @section    TODO
@@ -36,7 +36,7 @@
 #define MAX_PERMUTATION 12
 
 // Global variable to control verbosity
-int verboseLogging = 1; // Set to 1 for detailed logging, 0 for minimal logging
+int verboseLogging = 0; // Set to 1 for detailed logging, 0 for minimal logging
 
 // Function declarations
 BOOL isValidImagePath(NSString *path);
@@ -66,18 +66,14 @@ NSString *createUniqueDirectoryForSavingImages(void) {
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     [formatter setDateFormat:@"yyyy-MM-dd_HH-mm-ss-SSS"];
     NSString *dateString = [formatter stringFromDate:[NSDate date]];
-
-    // Generating a random component to append to the directory name for uniqueness
     uint32_t randomComponent = arc4random_uniform(10000);
     NSString *uniqueDirectoryName = [NSString stringWithFormat:@"%@_%u", dateString, randomComponent];
-
     NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *uniqueDirPath = [documentsDirectory stringByAppendingPathComponent:uniqueDirectoryName];
 
-    NSError *error;
+    NSError *error = nil;
     if (![[NSFileManager defaultManager] createDirectoryAtPath:uniqueDirPath withIntermediateDirectories:YES attributes:nil error:&error]) {
-        NSLog(@"Error creating directory for saving images: %@", error.localizedDescription);
-        // Consider additional error handling logic here, depending on application requirements
+        NSLog(@"Error creating directory for saving images: %@", error);
         return nil;
     }
 
@@ -404,7 +400,7 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
 
 int main(int argc, const char * argv[]) {
     NSLog(@"Starting up...");
-    debugMemoryHandling(); // Call the debug function
+//    debugMemoryHandling(); // Call the debug function
     setenv("CGBITMAP_CONTEXT_LOG_ERRORS", "1", 1);
     setenv("CG_PDF_VERBOSE", "1", 1);
     setenv("CG_CONTEXT_SHOW_BACKTRACE", "1", 1);
@@ -601,7 +597,7 @@ void processImage(UIImage *image, int permutation) {
 
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
     NSLog(@"Creating bitmap context with Standard RGB settings and applying fuzzing");
-    debugMemoryHandling();
+//    debugMemoryHandling();
     
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -615,7 +611,7 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -623,7 +619,7 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -635,7 +631,7 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -658,13 +654,13 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
 
     CGContextRelease(ctx);
     free(rawData);
-    debugMemoryHandling();
+//    debugMemoryHandling();
 }
 
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with Premultiplied First Alpha settings");
 
-    debugMemoryHandling();
+//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -678,7 +674,7 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -686,7 +682,7 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -698,7 +694,7 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-        debugMemoryHandling();
+//        debugMemoryHandling();
         return;
     }
 
@@ -721,14 +717,14 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
 
     CGContextRelease(ctx);
     free(rawData);
-    debugMemoryHandling();
+//    debugMemoryHandling();
 }
 
 void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with Non-Premultiplied Alpha settings");
 
     // Pre-operation memory diagnostic
-    debugMemoryHandling();
+//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -743,7 +739,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-        debugMemoryHandling(); // Post-failure diagnostic
+//        debugMemoryHandling(); // Post-failure diagnostic
         return;
     }
 
@@ -752,7 +748,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic before early exit
+//        debugMemoryHandling(); // Diagnostic before early exit
         return;
     }
 
@@ -764,7 +760,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic if context creation fails
+//        debugMemoryHandling(); // Diagnostic if context creation fails
         return;
     }
 
@@ -792,14 +788,14 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     // Cleanup
     CGContextRelease(ctx);
     free(rawData);
-    debugMemoryHandling(); // Post-operation diagnostic
+//    debugMemoryHandling(); // Post-operation diagnostic
 }
 
 void createBitmapContext16BitDepth(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with 16-bit depth per channel");
 
     // Pre-operation memory diagnostic
-    debugMemoryHandling();
+//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -815,7 +811,7 @@ void createBitmapContext16BitDepth(CGImageRef cgImg) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-        debugMemoryHandling(); // Post-failure diagnostic
+//        debugMemoryHandling(); // Post-failure diagnostic
         return;
     }
 
@@ -824,7 +820,7 @@ void createBitmapContext16BitDepth(CGImageRef cgImg) {
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic before early exit
+//        debugMemoryHandling(); // Diagnostic before early exit
         return;
     }
 
@@ -836,7 +832,7 @@ void createBitmapContext16BitDepth(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic if context creation fails
+//        debugMemoryHandling(); // Diagnostic if context creation fails
         return;
     }
 
@@ -864,7 +860,7 @@ void createBitmapContext16BitDepth(CGImageRef cgImg) {
     // Cleanup
     CGContextRelease(ctx);
     free(rawData);
-    debugMemoryHandling(); // Post-operation diagnostic
+//    debugMemoryHandling(); // Post-operation diagnostic
 }
 
 void createBitmapContextGrayscale(CGImageRef cgImg) {
@@ -876,7 +872,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with HDR and floating-point components");
 
     // Pre-operation memory diagnostic
-    debugMemoryHandling();
+//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -901,7 +897,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     if (!colorSpace) {
         NSLog(@"Failed to create HDR color space");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic before early exit
+//        debugMemoryHandling(); // Diagnostic before early exit
         return;
     }
 
@@ -913,7 +909,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context for HDR");
         free(rawData);
-        debugMemoryHandling(); // Diagnostic if context creation fails
+//        debugMemoryHandling(); // Diagnostic if context creation fails
         return;
     }
 
@@ -942,14 +938,14 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     // Cleanup
     CGContextRelease(ctx);
     free(rawData);
-    debugMemoryHandling(); // Post-operation diagnostic
+//    debugMemoryHandling(); // Post-operation diagnostic
 }
 
 void createBitmapContextAlphaOnly(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context for Alpha channel only");
 
     // Pre-operation memory diagnostic
-    debugMemoryHandling();
+//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -964,7 +960,7 @@ void createBitmapContextAlphaOnly(CGImageRef cgImg) {
     unsigned char *alphaData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!alphaData) {
         NSLog(@"Failed to allocate memory for alpha channel processing");
-        debugMemoryHandling(); // Post-failure diagnostic
+//        debugMemoryHandling(); // Post-failure diagnostic
         return;
     }
 
@@ -977,7 +973,7 @@ void createBitmapContextAlphaOnly(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context for Alpha channel");
         free(alphaData);
-        debugMemoryHandling(); // Diagnostic if context creation fails
+//        debugMemoryHandling(); // Diagnostic if context creation fails
         return;
     }
 
@@ -997,7 +993,7 @@ void createBitmapContextAlphaOnly(CGImageRef cgImg) {
     // Cleanup and resource management
     CGContextRelease(ctx);
     free(alphaData);
-    debugMemoryHandling(); // Post-operation diagnostic
+//    debugMemoryHandling(); // Post-operation diagnostic
 
     NSLog(@"Alpha-only bitmap context processing completed.");
 }
