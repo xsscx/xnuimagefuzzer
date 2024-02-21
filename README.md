@@ -53,63 +53,39 @@ If you have Questions, then Open an Issue.
 - XNU Image Fuzzer iPhone 14 Pro Max View 1
 <img src="https://xss.cx/2024/02/20/img/xnu-image-fuzzer-xcode-sample-screenshot-poc-4.png" alt="XNU Image Fuzzer iPhone 14 Pro Max View 1" style="height:500px; width:400px;"/>
 
-## Code WIP
-Currently working on adding a BOOL to the processImage() function
-```
-void processImage(UIImage *image, int permutation) {
-     CGImageRef cgImg = [image CGImage];
-     if (!cgImg) {
-         NSLog(@"Failed to get CGImage from UIImage.");
-         return;
-     }
-     NSLog(@"CGImage created from UIImage. Dimensions: %zu x %zu", CGImageGetWidth(cgImg), CGImageGetHeight(cgImg));
+### XCode Crash
+If you have completed the suggested Quick Start, and copied Flowers.exr into XCode, have you seen the EXR Crash for XCode yet?
 
-     if (permutation == -1) {
-         for (int i = 1; i <= 12; i++) {
-+            BOOL success = YES; // Assume success until proven otherwise
-             switch (i) {
-                 case 1:
-                     NSLog(@"Case: Creating bitmap context with Standard RGB settings");
--                    createBitmapContextStandardRGB(cgImg, i);
-+                    success = createBitmapContextStandardRGB(cgImg, i);
-                     break;
-                 case 2:
-                     NSLog(@"Case: Creating bitmap context with Premultiplied First Alpha settings");
--                    createBitmapContextPremultipliedFirstAlpha(cgImg);
-+                    success = createBitmapContextPremultipliedFirstAlpha(cgImg);
-                     break;
-                 // Implement similar success checks for cases 3 through 11.
-                 case 4:
-                     NSLog(@"Case: Creating bitmap context with 16-bit depth settings");
--                    createBitmapContext16BitDepth(cgImg);
-+                    success = createBitmapContext16BitDepth(cgImg);
-+                    if (!success) {
-+                        NSLog(@"Failed to create bitmap context with 16-bit Depth settings");
-+                    }
-                     break;
-                 // Insert additional cases here...
-                 case 12:
-                     NSLog(@"Case: Creating bitmap context with 32-bit float, 4-component settings");
--                    createBitmapContext32BitFloat4Component(cgImg);
-+                    success = createBitmapContext32BitFloat4Component(cgImg);
-                     break;
-                 default:
-                     NSLog(@"Unexpected case number %d", i);
-+                    success = NO; // Mark as failure for unexpected cases
-                     break;
-             }
-+            if (success) {
-+                NSLog(@"Completed image processing for permutation %d", i);
-+            } else {
-+                NSLog(@"Failed image processing for permutation %d", i);
-+                // You could add additional error recovery or logging here if needed
-+            }
-         }
-     } else {
-         // Similar logic for handling a single permutation with error checking
-         // Ensure the specific function called for the single permutation also follows this pattern
-     }
- }
+If you have not yet received the XCode Crash, Commit the Changes to your local Repository. When you attempt View the OpenEXR Distribution of Flowers.exr, the Rendering should Trigger a Crash in XCode due to the Sub-Sampling Issue described at URL https://github.com/xsscx/macos-research/blob/main/code/imageio/crashes/libAppleEXR-discussion-analysis.md.
+
+```
+Process:               Xcode [30281]
+Path:                  /Applications/Xcode.app/Contents/MacOS/Xcode
+Identifier:            com.apple.dt.Xcode
+Version:               15.2 (22503)
+Build Info:            IDEApplication-22503000000000000~3 (15C500b)
+...
+Exception Type:        EXC_CRASH (SIGABRT)
+Exception Codes:       0x0000000000000000, 0x0000000000000000
+
+Termination Reason:    Namespace SIGNAL, Code 6 Abort trap: 6
+Terminating Process:   Xcode [30281]
+
+Application Specific Information:
+abort() called
+
+
+Thread 0::  Dispatch queue: com.apple.root.user-interactive-qos
+0   libAppleEXR.dylib             	    0x7ffa0b328669 void _YCCAtoRGBA<half, 2u, 16>(half const*&, half const*&, half*&, YccMatrix const&, half const&) + 471
+1   libAppleEXR.dylib             	    0x7ffa0b31cced void YCCAtoRGBA<half, 2u>(half const*, unsigned long, half const*, unsigned long, half*, unsigned long, double, YccMatrix const&, unsigned int, unsigned int, unsigned int) + 155
+2   libAppleEXR.dylib             	    0x7ffa0b31c87f TileDecoder::ReadYccBlock(void*, unsigned long) + 1619
+3   libdispatch.dylib             	    0x7ff804c915cd _dispatch_client_callout2 + 8
+4   libdispatch.dylib             	    0x7ff804ca319d _dispatch_apply_invoke_and_wait + 214
+5   libdispatch.dylib             	    0x7ff804ca26ab _dispatch_apply_with_attr_f + 1181
+6   libAppleEXR.dylib             	    0x7ffa0b31bfce axr_error_t LaunchBlocks<ReadPixelsArgs>(void (*)(void*, unsigned long), ReadPixelsArgs const*, unsigned long, axr_flags_t) + 355
+7   libAppleEXR.dylib             	    0x7ffa0b31f422 TileDecoder::ReadYccRGBAPixels(double, YccMatrix const&, void*, unsigned long) const + 2242
+8   libAppleEXR.dylib             	    0x7ffa0b3115f9 Part::ReadRGBAPixels(axr_decoder*, void*, unsigned long, double, axr_flags_t) const + 2511
+9   ImageIO                       	    0x7ff80fbafd25 EXRReadPlugin::decodeBlockAppleEXR(void*, unsigned long) + 337
 
 ```
 
