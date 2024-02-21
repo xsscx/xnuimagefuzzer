@@ -58,8 +58,9 @@ For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and for 
 ### XCode Crash
 If you have completed the suggested Quick Start, and copied Flowers.exr into XCode, have you seen the EXR Crash for XCode yet?
 
-If you have not yet received the XCode Crash, Commit the Changes to your local Repository. When you attempt View the OpenEXR Distribution of Flowers.exr, the Rendering should Trigger a Crash in XCode due to the Sub-Sampling Issue described at URL https://github.com/xsscx/macos-research/blob/main/code/imageio/crashes/libAppleEXR-discussion-analysis.md.
+If you have not yet received the XCode Crash, View Flowers.exr or Commit the Changes to your local Repository. When you attempt View the OpenEXR Distribution of Flowers.exr, the Rendering should Trigger a Crash in XCode due to the Sub-Sampling Issue described at URL https://github.com/xsscx/macos-research/blob/main/code/imageio/crashes/libAppleEXR-discussion-analysis.md.
 
+If you use Finder or any App that Calls into libAppleEXR, and View Flowers.exr, you should get multiple Crashes. 
 ```
 Process:               Xcode [30281]
 Path:                  /Applications/Xcode.app/Contents/MacOS/Xcode
