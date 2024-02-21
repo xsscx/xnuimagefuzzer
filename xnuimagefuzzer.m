@@ -4,7 +4,7 @@
  * @author     @h02332 | David Hoyt
  * @date       Modified 20 FEB 2024 | 2000 EST
  *
- * Detailed description of the file, if necessary.
+ * License: GPL3
  *
  * @section    CHANGES
  * [Date] [Author] - [Description of Changes]
