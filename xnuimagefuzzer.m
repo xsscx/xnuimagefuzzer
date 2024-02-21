@@ -291,6 +291,48 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
     }
 }
 
+void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size_t width, size_t height, BOOL verboseLogging) {
+    if (!alphaData || width == 0 || height == 0) {
+        NSLog(@"No valid alpha data or dimensions available for enhanced fuzzing.");
+        return;
+    }
+
+    if (verboseLogging) {
+        NSLog(@"Starting enhanced fuzzing on Alpha-only bitmap context");
+    }
+
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            size_t pixelIndex = y * width + x; // Direct index as we're dealing with 1 byte per pixel
+            
+            // Randomly decide on a fuzzing method
+            switch (arc4random_uniform(3)) { // Example with 3 simple fuzzing methods
+                case 0: // Invert alpha value
+                    alphaData[pixelIndex] = 255 - alphaData[pixelIndex];
+                    break;
+                case 1: // Set to fully transparent or fully opaque
+                    if (arc4random_uniform(2) == 0) {
+                        alphaData[pixelIndex] = 0; // Fully transparent
+                    } else {
+                        alphaData[pixelIndex] = 255; // Fully opaque
+                    }
+                    break;
+                case 2: // Apply random noise
+                    {
+                        int noise = (arc4random_uniform(51)) - 25; // Random noise between -25 and 25
+                        int newAlpha = (int)alphaData[pixelIndex] + noise;
+                        alphaData[pixelIndex] = (unsigned char)fmax(0, fmin(255, newAlpha)); // Clamp between 0 and 255
+                    }
+                    break;
+            }
+        }
+    }
+
+    if (verboseLogging) {
+        NSLog(@"Enhanced fuzzing on Alpha-only bitmap context completed");
+    }
+}
+
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height) {
     
     for (size_t y = 0; y < height; y++) {
@@ -903,17 +945,62 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
 }
 
 void createBitmapContextAlphaOnly(CGImageRef cgImg) {
-    NSLog(@"Creating bitmap context with Alpha Only settings");
-    size_t width = CGImageGetWidth(cgImg);
-    size_t height = CGImageGetHeight(cgImg);
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width, NULL, kCGImageAlphaOnly);
-    if (!ctx) {
-        NSLog(@"Failed to create bitmap context with Alpha Only settings");
+    NSLog(@"Creating bitmap context for Alpha channel only");
+
+    // Pre-operation memory diagnostic
+    debugMemoryHandling();
+
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
         return;
     }
-    NSLog(@"Bitmap context with Alpha Only settings created successfully");
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+    size_t bytesPerRow = width; // 1 byte per pixel for Alpha only
+
+    // Allocate memory for raw alpha data
+    unsigned char *alphaData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
+    if (!alphaData) {
+        NSLog(@"Failed to allocate memory for alpha channel processing");
+        debugMemoryHandling(); // Post-failure diagnostic
+        return;
+    }
+
+    // Since we're dealing with alpha only, no color space is required
+    // Adjusting bitmap info to accommodate alpha data correctly
+    CGBitmapInfo bitmapInfo = kCGImageAlphaOnly | kCGBitmapByteOrderDefault;
+
+    CGContextRef ctx = CGBitmapContextCreate(alphaData, width, height, 8, bytesPerRow, NULL, bitmapInfo);
+
+    if (!ctx) {
+        NSLog(@"Failed to create bitmap context for Alpha channel");
+        free(alphaData);
+        debugMemoryHandling(); // Diagnostic if context creation fails
+        return;
+    }
+
+    // Drawing the alpha channel into the context
+    // Assuming the cgImg already contains the alpha channel we want to process
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+
+    // Apply fuzzing logic directly to the alpha data
+    NSLog(@"Applying enhanced fuzzing logic to the Alpha-only bitmap context");
+    // Note: The applyEnhancedFuzzingToBitmapContext function needs to be adjusted to work with alphaData
+    applyEnhancedFuzzingToBitmapContextAlphaOnly(alphaData, width, height, YES); // Assuming verbose logging is desired
+
+    // Creating a new image from the modified context might not be directly applicable
+    // as we're dealing with alpha channel only. Further processing might be required
+    // to utilize this alpha data with another image or for masking.
+
+    // Cleanup and resource management
     CGContextRelease(ctx);
+    free(alphaData);
+    debugMemoryHandling(); // Post-operation diagnostic
+
+    NSLog(@"Alpha-only bitmap context processing completed.");
 }
+
 
 void createBitmapContext1BitMonochrome(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with 1-bit Monochrome settings");
