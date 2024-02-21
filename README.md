@@ -39,7 +39,7 @@ This code is a stand-alone Image Fuzzer for XNU Research.
 - Crash Analysis
 
 ## Background
-I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this C++ XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope, enjoy!
+I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this Objectice-C XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope, enjoy!
 
 This Project is for anyone wanting to Learn C++ or XNU Image Fuzzing. 
 
