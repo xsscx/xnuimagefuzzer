@@ -7,7 +7,7 @@
 # cd build
 # cmake ..  -G  Xcode
 # cmake --build . --config Debug
-# 
+#
 #
 #
 cmake_minimum_required(VERSION 3.15) # Ensure this is the first line to set the minimum required version of CMake
@@ -19,7 +19,6 @@ execute_process(COMMAND xcrun --sdk iphoneos --show-sdk-path OUTPUT_VARIABLE IOS
 set(CMAKE_OSX_SYSROOT "${IOS_SDK_ROOT}")
 set(CMAKE_OSX_ARCHITECTURES arm64)
 set(CMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "14.2")
-set(CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "YOUR_TEAM_ID")
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   # Enable debug symbols
@@ -35,7 +34,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE MATCHES Debug)
   # Existing debug and ASAN settings
-  
+
   # Enable code coverage with Clang/LLVM
   set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fprofile-instr-generate -fcoverage-mapping")
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fprofile-instr-generate -fcoverage-mapping")
@@ -43,6 +42,11 @@ endif()
 
 # Define the executable with its new name and necessary source files
 add_executable(xnuimagefuzzer main.m) # Executable name changed to xnuimagefuzzer
+
+# Set the path to the Info.plist file
+set_target_properties(xnuimagefuzzer PROPERTIES
+  MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/Info.plist
+)
 
 # Since your project targets iOS, ensure it links against the correct frameworks
 if(APPLE)
