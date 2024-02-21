@@ -32,13 +32,15 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
 - Crash Analysis
 
 ## Background
-I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope, enjoy!
+I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope. 
 
-This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. 
+You can use Jackalope with the Example Code provided in my macOS Research Repo for Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m]. 
 
-You can use Jackalope with the Example code provided in my macOS Research Repo in Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m], and have your own Code running a XNU Image Fuzzer to expand your horizons.
+This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. I Ported my C++ Code to Objective-C. If you have Questions, then Open an Issue.
 
-If you have Questions, then Open an Issue. 
+The example Code provides the ability to change a few Numbers in a Function() and further Modify the Program Behavior, perhaps you will get a good Crash. 
+
+For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and dor arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
 
 ### XNU Image Fuzzer Pictures
 - XNU Image Fuzzer Xcode Sample 1
