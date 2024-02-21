@@ -41,7 +41,7 @@ This code is a stand-alone Image Fuzzer for XNU Research.
 ## Background
 I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor AUF, OOB, NPTR that impacted some results given the Seeding. I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope, enjoy!
 
-This Project is for anyone wanting to Learn C++ or XNU Image Fuzzing. 
+This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. 
 
 You can use Jackalope with the Example code provided in my macOS Research Repo in Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m], and have your own Code running a XNU Image Fuzzer to expand your horizons.
 
