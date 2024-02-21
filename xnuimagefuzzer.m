@@ -2,7 +2,7 @@
  * @file       ios-image-fuzzer-example.m
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
- * @date       Modified 20 Nov 2024 | 2000 EST
+ * @date       Modified 20 FEB 2024 | 2000 EST
  *
  * Detailed description of the file, if necessary.
  *
