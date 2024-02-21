@@ -155,7 +155,7 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
 
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
-            size_t pixelIndex = (y * width + x) * 4;
+            size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
             int fuzzMethod = arc4random_uniform(6); // Six methods
 
             switch (fuzzMethod) {
@@ -163,7 +163,7 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     if (verboseLogging) {
                         NSLog(@"Inversion applied at Pixel[%zu, %zu]", x, y);
                     }
-                    for (int i = 0; i < 3; i++) {  // Apply inversion to RGB
+                    for (int i = 0; i < 3; i++) { // Apply inversion to RGB
                         rawData[pixelIndex + i] = 255 - rawData[pixelIndex + i];
                     }
                     break;
@@ -171,8 +171,8 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     if (verboseLogging) {
                         NSLog(@"Random noise applied at Pixel[%zu, %zu]", x, y);
                     }
-                    for (int i = 0; i < 4; i++) {
-                        int noise = arc4random_uniform(101) - 50;
+                    for (int i = 0; i < 4; i++) { // Including alpha channel
+                        int noise = arc4random_uniform(101) - 50; // Noise range [-50, 50]
                         int newValue = rawData[pixelIndex + i] + noise;
                         rawData[pixelIndex + i] = (unsigned char)fmax(0, fmin(255, newValue));
                     }
@@ -181,17 +181,20 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     if (verboseLogging) {
                         NSLog(@"Random color set at Pixel[%zu, %zu]", x, y);
                     }
-                    rawData[pixelIndex] = arc4random_uniform(256);
-                    rawData[pixelIndex + 1] = arc4random_uniform(256);
-                    rawData[pixelIndex + 2] = arc4random_uniform(256);
+                    // Assign random colors to RGB, leaving alpha unchanged
+                    for (int i = 0; i < 3; i++) {
+                        rawData[pixelIndex + i] = arc4random_uniform(256);
+                    }
                     break;
                 case 3: // Shift pixel values
                     if (verboseLogging) {
                         NSLog(@"Shift pixel values applied at Pixel[%zu, %zu]", x, y);
                     }
-                    for (int i = 0; i < 3; i++) {
-                        rawData[pixelIndex + i] = (rawData[pixelIndex + i] + 128) % 256;
-                    }
+                    // Circular shift right for RGB values
+                    unsigned char temp = rawData[pixelIndex + 2]; // Temporarily store the Blue value
+                    rawData[pixelIndex + 2] = rawData[pixelIndex + 1]; // Move Green to Blue
+                    rawData[pixelIndex + 1] = rawData[pixelIndex]; // Move Red to Green
+                    rawData[pixelIndex] = temp; // Move original Blue to Red
                     break;
                 case 4: // Extreme contrast adjustment
                     if (verboseLogging) {
@@ -205,10 +208,11 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     if (verboseLogging) {
                         NSLog(@"Conditional color swap at Pixel[%zu, %zu]", x, y);
                     }
-                    if ((x + y) % 10 < 5) {
-                        unsigned char temp = rawData[pixelIndex];
-                        rawData[pixelIndex] = rawData[pixelIndex + 2];
-                        rawData[pixelIndex + 2] = temp;
+                    // Swap Red and Blue based on a simple condition
+                    if ((x + y) % 2 == 0) { // Changed condition for more frequent swaps
+                        unsigned char temp = rawData[pixelIndex]; // Store Red
+                        rawData[pixelIndex] = rawData[pixelIndex + 2]; // Blue to Red
+                        rawData[pixelIndex + 2] = temp; // Red to Blue
                     }
                     break;
             }
