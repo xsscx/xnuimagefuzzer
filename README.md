@@ -40,7 +40,7 @@ This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. I 
 
 The example Code provides the ability to change a few Numbers in a Function() and further Modify the Program Behavior, perhaps you will get a good Crash. 
 
-For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and dor arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
+For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and for arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
 
 ### XNU Image Fuzzer Pictures
 - XNU Image Fuzzer Xcode Sample 1
