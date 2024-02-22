@@ -47,7 +47,7 @@ You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Int
 - Jackalope Fuzzing Harnesses
   - Based on XNU Image Fuzzer
   - Image Fuzzing Harness Code
-  - https://github.com/xsscx/macos-research/tree/main/code/iOSOnMac
+  - https://github.com/xsscx/macos-research/tree/main/code/imageio
 
 The example Code provides the ability to change a few Numbers in a Function() and further Modify the Program Behavior, perhaps you will get a good Crash. 
 
