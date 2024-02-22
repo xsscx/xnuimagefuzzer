@@ -23,27 +23,37 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
     - -1
 - Run
 
-## Roadmap
-- Add Rendering via StoryBoard
-  - Display Seed Image
-  - Display Fuzzed Image
-  - Fuzzing Instrumentation
-- Distributed Fuzzing
-  - Pull Seeds
-  - Push PoC's
-  - Analytics
-- Crash Analysis
-
 ## Background
-I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope. The Results were so Interesting I increased this Fuzzer Scope. 
+I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. 
 
-You can use Jackalope with the Example Code provided in my macOS Research Repo for Imageio [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m]. 
+I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope, and the iOsOnMac Interposing Code. The Results were so Interesting I increased this Fuzzer Scope, then wrote Interposing Code that will drop to LLDB Debugger when the correct Signal is Indicated. 
 
-This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. I Ported my C++ Code to Objective-C. If you have Questions, then Open an Issue.
+My iOsOnMac Code also modified TinyInst and modifying the TinyInst main.cpp and instrumentation.cpp, using modified Headers to Anonymize Memory for Collaboration. See URL https://github.com/xsscx/macos-research/issues/2 for details on the TinyInst mods.
+
+You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m]. The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
+
+### Big Picture
+- XNU Image Fuzzer
+  	- This
+	- Proof of Concept
+	- Native Rendering of Fuzzed Images
+
+- iOsOnMac
+  - Based on XNU Image Fuzzer
+  - XNU Image Fuzzing at Scale
+  - Fuzzed Image File Collection
+  - https://github.com/xsscx/macos-research/tree/main/code/iOSOnMac
+    
+- Jackalope Fuzzing Harnesses
+  - Based on XNU Image Fuzzer
+  - Image Fuzzing Harness Code
+  - https://github.com/xsscx/macos-research/tree/main/code/iOSOnMac
 
 The example Code provides the ability to change a few Numbers in a Function() and further Modify the Program Behavior, perhaps you will get a good Crash. 
 
 For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and for arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
+
+This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. I Ported my C++ Code to Objective-C. If you have Questions, then Open an Issue.
 
 ### XCode Crash
 If you have completed the suggested Quick Start, and copied Flowers.exr into XCode, have you seen the EXR Crash for XCode yet?
@@ -81,6 +91,17 @@ Thread 0::  Dispatch queue: com.apple.root.user-interactive-qos
 9   ImageIO                       	    0x7ff80fbafd25 EXRReadPlugin::decodeBlockAppleEXR(void*, unsigned long) + 337
 
 ```
+
+### Roadmap
+- Add Rendering via StoryBoard
+  - Display Seed Image
+  - Display Fuzzed Image
+  - Fuzzing Instrumentation
+- Distributed Fuzzing
+  - Pull Seeds
+  - Push PoC's
+  - Analytics
+- Crash Analysis
 
 ### Console log
 ```
