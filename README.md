@@ -30,7 +30,7 @@ I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope, 
 
 My iOsOnMac Code also modified TinyInst and modifying the TinyInst main.cpp and instrumentation.cpp, using modified Headers to Anonymize Memory for Collaboration. See URL https://github.com/xsscx/macos-research/issues/2 for details on the TinyInst mods.
 
-You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/ios-image-fuzzer-example.m]. The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
+You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/xnuimagefuzzer.m]. The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
 
 ### Big Picture
 - XNU Image Fuzzer
