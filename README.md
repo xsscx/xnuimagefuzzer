@@ -23,6 +23,26 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
     - -1
 - Run
 
+### Run Targets
+1. If you have a Jailbroken or Virtual Device, you have access directly to the Fuzzed Files.
+2. If you have an arm-based Mac, you can use it as the Run Target, and again you have access directly to the Fuzzed Files.
+```
+Starting up...
+Loading file: seed-small-7.png
+Image path: /private/var/folders/pj/.../d/Wrapper/XNU Image Fuzzer.app/seed-small-7.png
+...
+Shift pixel values applied at Pixel[343, 407]
+Enhanced fuzzing on bitmap context completed
+Fuzzed image for '16bit_depth' context saved to /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png
+
+Fuzzed image for 'hdr_float' context saved to /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_hdr_float.png
+Modified UIImage with HDR and floating-point components created and saved successfully.
+Completed image processing for permutation 6
+```
+You can copy the newly Fuzzed Files somewhere for permanent storage, perhaps more automated via .zsh.
+```
+cp /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png ~/Documents/fuzzed/xnuimagefuzzer/png/date/time/
+```
 ## Background
 I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. 
 
