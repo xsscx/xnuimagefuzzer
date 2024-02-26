@@ -23,7 +23,7 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
     - -1
 - Run
 
-### Run Targets
+### Run Targets Jailbroken Device
 1. If you have a Jailbroken or Virtual Device, you have access directly to the Fuzzed Files.
 2. If you have an arm-based Mac, you can use it as the Run Target, and again you have access directly to the Fuzzed Files.
 ```
@@ -43,6 +43,21 @@ You can copy the newly Fuzzed Files somewhere for permanent storage, perhaps mor
 ```
 cp /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png ~/Documents/fuzzed/xnuimagefuzzer/png/date/time/
 ```
+### Run Target arm64 & arm64e 
+#### File Access
+Enable File Sharing for Your App
+First, you need to enable iTunes File Sharing or make your app's documents available in the Files app:
+
+- Modify Info.plist: Add the UIFileSharingEnabled (Application supports iTunes file sharing) key and set it to YES
+
+Then, To make files accessible in the Files app, also add:
+  - LSSupportsOpeningDocumentsInPlace key and set it to YES
+
+#### Access Files via iTunes or the Files App
+
+- iTunes File Sharing: Connect your iPhone to a computer, open iTunes, select your device, go to the "File Sharing" section, select your app, and you should see the files listed. You can then save them to your computer.
+
+- Files App: Open the Files app on your iPhone, navigate to the "On My iPhone" section, find your app's folder, and you'll see the saved images. From here, you can select and share files via AirDrop or other 
 ## Background
 I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. 
 
