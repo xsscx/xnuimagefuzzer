@@ -23,7 +23,8 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
     - -1
 - Run
 
-### Run Targets Jailbroken Device
+### Run Target Jailbroken Device
+#### File Access
 1. If you have a Jailbroken or Virtual Device, you have access directly to the Fuzzed Files.
 2. If you have an arm-based Mac, you can use it as the Run Target, and again you have access directly to the Fuzzed Files.
 ```
