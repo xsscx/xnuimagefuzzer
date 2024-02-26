@@ -1,6 +1,6 @@
 # XNU Image Fuzzer 
 
-Last Updated: February 21, 2024, 0917 EST
+Last Updated: February 26, 2024, 1508 EST
 
 The Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines.
 - PermaLink https://srd.cx/xnu-image-fuzzer/
@@ -16,10 +16,10 @@ The Source Code contains a proof of concept implementation of an image fuzzer de
 ## Quick Start
 - Create a new iOS Application in Xcode
 - Copy the Source File and Paste into main.m
-- Copy the Flowers.exr, and any UTT Image File Type into your XCode Project
+- Copy the Flowers.exr, and any Image File Type into your XCode Project
 - Edit the Scheme
   - For Arguements on Launch
-    - Flowers.exr, or any UTT Image File Type
+    - Flowers.exr, or any Image File Type
     - -1
 - Run
 
