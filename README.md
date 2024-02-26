@@ -4,8 +4,9 @@ Last Updated: February 26, 2024, 1508 EST
 
 The Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines.
 - PermaLink https://srd.cx/xnu-image-fuzzer/
+
 #### XNU Image Fuzzer iPhone 14 Pro Max Render 
-<img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render" style="height:32px; width:32px;"/> 
+<img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render" style="height:550px; width:330px;"/> 
 
 ## Samples
 - Project Zero Bug 2225 Seed <img src="https://xss.cx/2024/02/20/img/2225.png" alt="Seed - P0-2225" style="height:32px; width:32px;"/> Fuzz <img src="https://xss.cx/2024/02/20/img/xnuimagefuzzer-sample-output-pmg-image-rendering-horizontal-presentaion.png" alt="XNU Image Fuzzer Standard RBG #2" style="height:32px; width:352px;"/>
