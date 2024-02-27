@@ -2,7 +2,8 @@
  * @file       xnuimagefuzzer.m
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
- * @date       Modified 20 FEB 2024 | 2000 EST
+ * @date       Modified 27 FEB 2024
+ * @time       1056 EST
  *
  * License: GPL3
  *
@@ -10,11 +11,12 @@
  * [Date] [Author] - [Description of Changes]
  * - [26/11/2023] [h02332] - Initial commit
  * - [27/11/2023] [h02332] - Removed Grayscale Feature pending Implementation
- * - [28/11/2023] [h02332] - Refactor Code & fuzzing
- * - [29/11/2023] [h02332] - Refactor Code & fuzzing & logging
- * - [20/02/2024] [h02332] - Refactor Code & fuzzing & logging
+ * - [28/11/2023] [h02332] - Refactor Code & Fuzzing
+ * - [29/11/2023] [h02332] - Refactor Code & Fuzzing & Logging
+ * - [20/02/2024] [h02332] - Refactor Code & Fuzzing & Logging
  * - [21/02/2024] [h02332] - Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes
  * - [21/02/2024] [h02332] - PermaLink https://srd.cx/xnu-image-fuzzer/
+ * - [27/02/2024] [h02332] - Refactor Code & Fuzzing & Logging & Injected Strings
  *
  * @section    TODO
  * - [ ] Grayscale Implementation
@@ -23,6 +25,7 @@
  * - [ ] Add Logging Toggle as global variable  - testing in createBitmapContextStandardRGB function
  *
  */
+#pragma mark - Headers
 
 #include <Foundation/Foundation.h>
 #include <UIKit/UIKit.h>
@@ -30,22 +33,60 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <math.h>
+#include <stdbool.h>
 
-// Define constants for ALL and MAX_PERMUTATION
+#pragma mark - Constants
+
 #define ALL -1
 #define MAX_PERMUTATION 12
 
-// Global variable to control verbosity
-int verboseLogging = 0; // Set to 1 for detailed logging, 0 for minimal logging
+#pragma mark - Injection Strings Configuration
 
-// Function declarations
+// Strings for security testing and behavior monitoring
+#define INJECT_STRING_1 "XNU Image Fuzzer" // Identify images processed by this tool
+#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // Test for URL invocation or monitoring
+#define INJECT_STRING_3 "drop tables" // Simple SQL injection payload
+#define INJECT_STRING_4 "console.log(domain)" // Test for XSS or JavaScript execution
+#define NUMBER_OF_STRINGS 4 // Total number of strings to be injected
+
+char* injectStrings[NUMBER_OF_STRINGS] = {
+    INJECT_STRING_1,
+    INJECT_STRING_2,
+    INJECT_STRING_3,
+    INJECT_STRING_4
+};
+
+#pragma mark - Debugging Macros
+
+#ifdef DEBUG
+#define DebugLog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__);
+#else
+#define DebugLog(...)
+#endif
+
+#define AssertWithMessage(condition, message, ...) \
+    do { \
+        if (!(condition)) { \
+            NSLog((@"Assertion failed: %s " message), #condition, ##__VA_ARGS__); \
+            assert(condition); \
+        } \
+    } while(0)
+
+#pragma mark - Global Variables
+
+int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
+
+#pragma mark - Function Declarations
+
 BOOL isValidImagePath(NSString *path);
 UIImage *loadImageFromFile(NSString *path);
 void processImage(UIImage *image, int permutation);
 void Data(unsigned char *rawData, size_t width, size_t height, const char *message);
 NSString *createUniqueDirectoryForSavingImages(void);
 
-// Permutation functions
+#pragma mark - Image Processing Functions
+
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation);
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg);
 void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg);
@@ -59,8 +100,11 @@ void createBitmapContextLittleEndian(CGImageRef cgImg);
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg);
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg);
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
-void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message);
+void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging);
+
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verboseLogging);
+
+#pragma mark - Directory Mangement
 
 NSString *createUniqueDirectoryForSavingImages(void) {
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
@@ -80,7 +124,9 @@ NSString *createUniqueDirectoryForSavingImages(void) {
     return uniqueDirPath;
 }
 
-void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message) {
+#pragma mark - Pixel Logging Data
+
+void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"%s - Invalid data or dimensions. Logging aborted.", message);
         return;
@@ -92,8 +138,8 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
         NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
 
         for (int i = 0; i < numberOfPixelsToLog; i++) {
-            unsigned int randomX = arc4random_uniform((unsigned int)width);
-            unsigned int randomY = arc4random_uniform((unsigned int)height);
+            unsigned int randomX = rand() % width; // Using rand() for simplicity
+            unsigned int randomY = rand() % height;
             size_t pixelIndex = (randomY * width + randomX) * 4;
 
             if (pixelIndex + 3 < width * height * 4) {
@@ -101,6 +147,14 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
                       message, randomX, randomY,
                       rawData[pixelIndex], rawData[pixelIndex + 1],
                       rawData[pixelIndex + 2], rawData[pixelIndex + 3]);
+
+                // Decoding embedded data from pixels
+                unsigned char decodedChar = 0;
+                for (int bit = 0; bit < 3; bit++) {
+                    decodedChar |= (rawData[pixelIndex + bit] & 0x01) << (bit*2);
+                }
+                NSLog(@"%s - Decoded data from Pixel[%u, %u]: %c",
+                      message, randomX, randomY, decodedChar);
             } else {
                 NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
             }
@@ -109,6 +163,8 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
         NSLog(@"%s - Basic pixel logging executed.", message);
     }
 }
+
+#pragma mark - Data
 
 void Data(unsigned char *rawData, size_t width, size_t height, const char *message) {
     if (!rawData || width == 0 || height == 0) {
@@ -140,11 +196,17 @@ void Data(unsigned char *rawData, size_t width, size_t height, const char *messa
     }
 }
 
-void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verboseLogging) {
+#pragma mark - applyEnhancedFuzzingToBitmapContext
+
+void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, bool verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"No valid raw data or dimensions available for enhanced fuzzing.");
         return;
     }
+
+    size_t stringIndex = 0; // Index to track which string to inject
+    size_t injectIndex = 0; // Index to track injection progress within a string
+    size_t totalStringsInjected = 0; // Total number of strings injected
 
     if (verboseLogging) {
         NSLog(@"Starting enhanced fuzzing on bitmap context");
@@ -153,8 +215,29 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
-            int fuzzMethod = arc4random_uniform(6); // Six methods
+            int fuzzMethod = rand() % 6; // Six methods, using rand for simplicity
 
+            if (totalStringsInjected < NUMBER_OF_STRINGS) {
+                char *currentString = injectStrings[stringIndex];
+                size_t stringLength = strlen(currentString);
+
+                if (injectIndex < stringLength) {
+                    // Encode a character into the least significant bits of the first three channels of a pixel
+                    for (int i = 0; i < 3; i++) {
+                        // Clear the least significant bit
+                        rawData[pixelIndex + i] &= 0xFE;
+                        // Set the bit based on the current character's bit
+                        rawData[pixelIndex + i] |= (currentString[injectIndex] >> (i*2)) & 0x01;
+                    }
+                    injectIndex++;
+                    if (injectIndex == stringLength) {
+                        injectIndex = 0; // Reset the injection index for the next string
+                        stringIndex++; // Move to the next string
+                        totalStringsInjected++; // Increment the count of strings injected
+                    }
+                }
+            }
+            
             switch (fuzzMethod) {
                 case 0: // Inversion
                     if (verboseLogging) {
@@ -169,7 +252,7 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                         NSLog(@"Random noise applied at Pixel[%zu, %zu]", x, y);
                     }
                     for (int i = 0; i < 4; i++) { // Including alpha channel
-                        int noise = arc4random_uniform(101) - 50; // Noise range [-50, 50]
+                        int noise = (rand() % 101) - 50; // Noise range [-50, 50]
                         int newValue = rawData[pixelIndex + i] + noise;
                         rawData[pixelIndex + i] = (unsigned char)fmax(0, fmin(255, newValue));
                     }
@@ -180,7 +263,7 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     }
                     // Assign random colors to RGB, leaving alpha unchanged
                     for (int i = 0; i < 3; i++) {
-                        rawData[pixelIndex + i] = arc4random_uniform(256);
+                        rawData[pixelIndex + i] = rand() % 256;
                     }
                     break;
                 case 3: // Shift pixel values
@@ -220,6 +303,8 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
         NSLog(@"Enhanced fuzzing on bitmap context completed");
     }
 }
+
+#pragma mark - applyEnhancedFuzzingToBitmapContextWithFloats
 
 void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width, size_t height, BOOL verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
@@ -288,6 +373,8 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
     }
 }
 
+#pragma mark - applyEnhancedFuzzingToBitmapContextAlphaOnly
+
 void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size_t width, size_t height, BOOL verboseLogging) {
     if (!alphaData || width == 0 || height == 0) {
         NSLog(@"No valid alpha data or dimensions available for enhanced fuzzing.");
@@ -330,6 +417,8 @@ void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size
     }
 }
 
+#pragma mark - applyFuzzingToBitmapContext
+
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height) {
     
     for (size_t y = 0; y < height; y++) {
@@ -347,6 +436,8 @@ void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t he
     }
     NSLog(@"Fuzzing applied to RGB components of the bitmap context");
 }
+
+#pragma mark - debugMemoryHandling
 
 void debugMemoryHandling(void) {
     const size_t sz = 0x10000;
@@ -373,6 +464,8 @@ void debugMemoryHandling(void) {
     }
 }
 
+#pragma mark - saveFuzzedImage
+
 void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
     // Ensure contextDescription is valid to prevent file path issues
     if (contextDescription == nil || [contextDescription length] == 0) {
@@ -397,6 +490,8 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
         NSLog(@"Failed to save fuzzed image for '%@' context", contextDescription);
     }
 }
+
+#pragma mark - main function
 
 int main(int argc, const char * argv[]) {
     NSLog(@"Starting up...");
