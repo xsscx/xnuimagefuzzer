@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time       1056 EST
+ * @time                 1105 EST
  *
  * License: GPL3
  *
@@ -138,8 +138,9 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
         NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
 
         for (int i = 0; i < numberOfPixelsToLog; i++) {
-            unsigned int randomX = rand() % width; // Using rand() for simplicity
-            unsigned int randomY = rand() % height;
+            // Using arc4random_uniform() for better randomness and to avoid modulo bias
+            unsigned int randomX = arc4random_uniform((unsigned int)width);
+            unsigned int randomY = arc4random_uniform((unsigned int)height);
             size_t pixelIndex = (randomY * width + randomX) * 4;
 
             if (pixelIndex + 3 < width * height * 4) {
@@ -215,7 +216,9 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
-            int fuzzMethod = rand() % 6; // Six methods, using rand for simplicity
+
+            // Using arc4random_uniform for random number generation
+            int fuzzMethod = arc4random_uniform(6); // Six methods
 
             if (totalStringsInjected < NUMBER_OF_STRINGS) {
                 char *currentString = injectStrings[stringIndex];
@@ -420,21 +423,29 @@ void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size
 #pragma mark - applyFuzzingToBitmapContext
 
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height) {
-    
+    NSLog(@"Beginning fuzzing operation on bitmap context.");
+
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t pixelIndex = (y * width + x) * 4; // 4 bytes per pixel (RGBA)
             
             // Fuzzing each color component (R, G, B) within the range of 0-255
             for (int i = 0; i < 3; i++) { // Looping over R, G, B components
-                int fuzzFactor = rand() % 51 - 25; // Random number between -25 and 25
+                // Using arc4random_uniform for a more uniform distribution and to avoid modulo bias
+                int fuzzFactor = (int)arc4random_uniform(51) - 25; // Random number between -25 and 25
                 int newValue = rawData[pixelIndex + i] + fuzzFactor;
                 rawData[pixelIndex + i] = (unsigned char) fmax(0, fmin(255, newValue));
             }
             // Alpha (offset + 3) is not altered
+            
+            // Optionally, inject encoded data into the alpha channel for testing purposes
+            if (x < NUMBER_OF_STRINGS && y == 0) { // Simple method to inject data at the start of the image
+                rawData[pixelIndex + 3] = strlen(injectStrings[x]); // Use the length of each string as a simple data point
+            }
         }
     }
-    NSLog(@"Fuzzing applied to RGB components of the bitmap context");
+    
+    NSLog(@"Fuzzing applied to RGB components of the bitmap context. Injection data encoded in the alpha channel of the first row.");
 }
 
 #pragma mark - debugMemoryHandling
