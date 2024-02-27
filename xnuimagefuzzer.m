@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time                 1515 EST
+ * @time       1532 EST
  *
  * License: GPL3
  *
@@ -1216,7 +1216,15 @@ void createBitmapContextBigEndian(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, CGColorSpaceCreateDeviceRGB(), kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB(); // Create color space
+    if (!colorSpace) {
+        NSLog(@"Failed to create color space for Big Endian settings");
+        return;
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace); // Release the color space object
+
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with Big Endian settings");
         return;
@@ -1246,7 +1254,7 @@ void createBitmapContextBigEndian(CGImageRef cgImg) {
     }
 
     NSLog(@"Bitmap context with Big Endian settings created and handled successfully");
-    CGContextRelease(ctx);
+    CGContextRelease(ctx); // Release the bitmap context
 }
 
 #pragma mark - createBitmapContextLittleEndian
@@ -1261,7 +1269,15 @@ void createBitmapContextLittleEndian(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, CGColorSpaceCreateDeviceRGB(), kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB(); // Create color space
+    if (!colorSpace) {
+        NSLog(@"Failed to create color space for Little Endian settings");
+        return;
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGColorSpaceRelease(colorSpace); // Release the color space object
+
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with Little Endian settings");
         return;
@@ -1291,7 +1307,7 @@ void createBitmapContextLittleEndian(CGImageRef cgImg) {
     }
 
     NSLog(@"Bitmap context with Little Endian settings created successfully");
-    CGContextRelease(ctx);
+    CGContextRelease(ctx); // Release the bitmap context
 }
 
 #pragma mark - createBitmapContext8BitInvertedColors
@@ -1306,12 +1322,20 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, CGColorSpaceCreateDeviceRGB(), kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Little);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB(); // Create color space
+    if (!colorSpace) {
+        NSLog(@"Failed to create color space for 8-bit depth, inverted colors");
+        return;
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Little);
+    CGColorSpaceRelease(colorSpace); // Release the color space object
+
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with 8-bit depth, inverted colors");
         return;
     }
-    
+
     // Draw the CGImage into the bitmap context
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
 
@@ -1343,7 +1367,7 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
         NSLog(@"Modified UIImage with createBitmapContext8BitInvertedColors settings created and saved successfully.");
     }
 
-    CGContextRelease(ctx);
+    CGContextRelease(ctx); // Release the bitmap context
 }
 
 #pragma mark - createBitmapContext32BitFloat4Component
@@ -1398,3 +1422,4 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     CGContextRelease(ctx); // Release the context to free up resources
 }
+
