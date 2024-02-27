@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time                 1105 EST
+ * @time       1510 EST
  *
  * License: GPL3
  *
@@ -79,6 +79,20 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 
 int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
 
+#pragma mark - Utility Function Prototypes
+
+BOOL isValidImagePath(NSString *path);
+UIImage *loadImageFromFile(NSString *path);
+void processImage(UIImage *image, int permutation);
+void Data(unsigned char *rawData, size_t width, size_t height, const char *message);
+NSString *createUniqueDirectoryForSavingImages(void);
+void addAdditiveNoise(float *pixel);
+void applyMultiplicativeNoise(float *pixel);
+void invertColor(float *pixel);
+void applyExtremeValues(float *pixel);
+void assignSpecialFloatValues(float *pixel);
+unsigned long hashString(char* str);
+
 #pragma mark - Image Processing Prototypes
 
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation);
@@ -123,20 +137,6 @@ extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
     [imageData writeToFile:filePath atomically:YES];
     NSLog(@"Saved monochrome image with identifier %@ at %@", identifier, filePath);
 }
-
-#pragma mark - Utility Function Prototypes
-
-BOOL isValidImagePath(NSString *path);
-UIImage *loadImageFromFile(NSString *path);
-void processImage(UIImage *image, int permutation);
-void Data(unsigned char *rawData, size_t width, size_t height, const char *message);
-NSString *createUniqueDirectoryForSavingImages(void);
-void addAdditiveNoise(float *pixel);
-void applyMultiplicativeNoise(float *pixel);
-void invertColor(float *pixel);
-void applyExtremeValues(float *pixel);
-void assignSpecialFloatValues(float *pixel);
-unsigned long hashString(char* str);
 
 #pragma mark - Directory Mangement
 
@@ -1398,3 +1398,4 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     CGContextRelease(ctx); // Release the context to free up resources
 }
+
