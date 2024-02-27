@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time       1532 EST
+ * @time                 1606 EST
  *
  * License: GPL3
  *
@@ -40,18 +40,20 @@
 
 #pragma mark - Constants
 
-#define ALL -1
-#define MAX_PERMUTATION 12
+#define ALL -1 // A special flag used to indicate an operation applies to all items or states.
+#define MAX_PERMUTATION 12 // The maximum number of permutations or variations to be applied in image processing.
+
 
 #pragma mark - Injection Strings Configuration
 
 // Strings for security testing and behavior monitoring
-#define INJECT_STRING_1 "XNU Image Fuzzer" // Identify images processed by this tool
-#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // Test for URL invocation or monitoring
-#define INJECT_STRING_3 "drop tables" // Simple SQL injection payload
-#define INJECT_STRING_4 "console.log(domain)" // Test for XSS or JavaScript execution
-#define NUMBER_OF_STRINGS 4 // Total number of strings to be injected
+#define INJECT_STRING_1 "XNU Image Fuzzer" // Tag images processed for identification.
+#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // Check for unintended URL handling.
+#define INJECT_STRING_3 "drop tables" // Simulate a basic SQL injection for security testing.
+#define INJECT_STRING_4 "console.log(domain)" // Attempt to trigger JavaScript execution for XSS vulnerability testing.
+#define NUMBER_OF_STRINGS 4 // The count of injection strings available for use.
 
+// Array of injection strings for easy iteration and application in tests.
 char* injectStrings[NUMBER_OF_STRINGS] = {
     INJECT_STRING_1,
     INJECT_STRING_2,
@@ -84,7 +86,7 @@ static int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
 BOOL isValidImagePath(NSString *path);
 UIImage *loadImageFromFile(NSString *path);
 void processImage(UIImage *image, int permutation);
-void Data(unsigned char *rawData, size_t width, size_t height, const char *message);
+// void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, const char *message);
 NSString *createUniqueDirectoryForSavingImages(void);
 void addAdditiveNoise(float *pixel);
 void applyMultiplicativeNoise(float *pixel);
@@ -95,71 +97,145 @@ unsigned long hashString(const char* str);
 
 #pragma mark - Image Processing Prototypes
 
+// Create a bitmap context with standard RGB color space. This context is suitable for most images and supports a wide range of colors.
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation);
+
+// Create a bitmap context with premultiplied first alpha. Premultiplied alpha is used in many graphics processes because it simplifies blending operations.
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg);
+
+// Create a bitmap context where the alpha is not premultiplied. This is useful for precise color manipulation and when working with images that require direct manipulation of alpha values.
 void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg);
+
+// Create a bitmap context with 16-bit depth per component. This allows for high-fidelity image processing, suitable for professional photography or detailed graphical work.
 void createBitmapContext16BitDepth(CGImageRef cgImg);
+
+// Create a bitmap context for grayscale images. This simplifies processing for images where color is not a factor, focusing on luminance values.
 void createBitmapContextGrayscale(CGImageRef cgImg);
+
+// Create a bitmap context with HDR (High Dynamic Range) using floating-point components. This is ideal for images with a wide range of luminance values, providing more detail in both shadows and highlights.
 void createBitmapContextHDRFloatComponents(CGImageRef cgImg);
+
+// Create a bitmap context that only processes the alpha channel. This is useful for working with or generating mask images.
 void createBitmapContextAlphaOnly(CGImageRef cgImg);
+
+// Create a bitmap context for 1-bit monochrome images. This context simplifies images to black and white, useful for stark contrasts or stylistic effects.
 void createBitmapContext1BitMonochrome(CGImageRef cgImg);
+
+// Create a bitmap context with a big endian pixel format. Endianness may affect how pixel data is read and written, important for compatibility with certain systems or file formats.
 void createBitmapContextBigEndian(CGImageRef cgImg);
+
+// Create a bitmap context with a little endian pixel format. Like big endian, this is related to the way data is stored and is crucial for ensuring correct image representation.
 void createBitmapContextLittleEndian(CGImageRef cgImg);
+
+// Create a bitmap context that inverts the colors of the 8-bit image. Inverting colors can highlight differences or be used for visual effects.
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg);
+
+// Create a bitmap context with a 32-bit floating-point format per component, supporting four components. This allows for extremely detailed and wide-range image processing, accommodating HDR content and advanced color grading.
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg);
+
+// Apply fuzzing to a bitmap context's raw pixel data. Fuzzing introduces random changes to test the resilience of image processing algorithms and uncover bugs.
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
+
+// Log pixel data from a bitmap context for analysis or debugging, with an option to include verbose output.
 void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verbose);
 
+// Apply enhanced fuzzing to a bitmap context's raw pixel data, with a parameter to enable verbose logging. This provides a more aggressive testing approach to uncover potential issues.
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
+
+// Convert the raw pixel data of an image to 1-bit monochrome, simplifying the image to basic black and white. This can be used for stylistic effects or to reduce complexity for certain processing tasks.
 void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t height);
+
+// Save a monochrome image with a specified identifier. This function is useful for persisting processed images, allowing for easy retrieval or comparison.
 void saveMonochromeImage(UIImage *image, NSString *identifier);
 
 #pragma mark - Conversion and Saving Functions
 
+/**
+ Converts image data to 1-bit monochrome using a simple thresholding technique.
+
+ @param rawData Pointer to the image data.
+ @param width The width of the image in pixels.
+ @param height The height of the image in pixels.
+ */
 extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t height) {
     size_t bytesPerRow = (width + 7) / 8; // Calculate the bytes per row for 1bpp
-    unsigned char threshold = 127; // Midpoint threshold for black/white
+    unsigned char threshold = 127; // Midpoint threshold for black/white conversion
+
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t byteIndex = y * bytesPerRow + x / 8;
-            unsigned char bit = (rawData[byteIndex] >> (7 - (x % 8))) & 0x01;
-            bit = (bit * 255) > threshold ? 1 : 0; // Simple threshold check
+            unsigned char pixelValue = rawData[y * width + x]; // Assuming rawData is in a format where each pixel is a byte
+            unsigned char bit = (pixelValue > threshold) ? 1 : 0; // Apply threshold
+
             rawData[byteIndex] &= ~(1 << (7 - (x % 8))); // Clear the bit
-            rawData[byteIndex] |= (bit << (7 - (x % 8))); // Set the bit based on threshold check
+            rawData[byteIndex] |= (bit << (7 - (x % 8))); // Set the bit based on threshold
         }
     }
 }
 
+/**
+ Saves a monochrome UIImage with a specified identifier to the documents directory.
+
+ @param image The UIImage to save.
+ @param identifier A unique identifier for the image file.
+ */
 extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
     NSData *imageData = UIImagePNGRepresentation(image);
     NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *filePath = [docsDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", identifier]];
-    [imageData writeToFile:filePath atomically:YES];
-    NSLog(@"Saved monochrome image with identifier %@ at %@", identifier, filePath);
+    
+    if ([imageData writeToFile:filePath atomically:YES]) {
+        NSLog(@"Saved monochrome image with identifier %@ at %@", identifier, filePath);
+    } else {
+        NSLog(@"Error saving monochrome image with identifier %@", identifier);
+    }
 }
 
-#pragma mark - Directory Mangement
+#pragma mark - Directory Management
 
+/**
+ Creates a unique directory for saving images within the documents directory. The directory name includes a timestamp and a random component to ensure uniqueness.
+
+ @return The path to the newly created unique directory, or nil if an error occurred.
+ */
 NSString *createUniqueDirectoryForSavingImages(void) {
+    // Initialize date formatter for timestamp
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     [formatter setDateFormat:@"yyyy-MM-dd_HH-mm-ss-SSS"];
+    
+    // Generate unique directory name with current date-time and a random component
     NSString *dateString = [formatter stringFromDate:[NSDate date]];
-    uint32_t randomComponent = arc4random_uniform(10000);
+    uint32_t randomComponent = arc4random_uniform(10000); // Ensures additional uniqueness
     NSString *uniqueDirectoryName = [NSString stringWithFormat:@"%@_%u", dateString, randomComponent];
+    
+    // Retrieve path to the documents directory
     NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    
+    // Construct the path for the new unique directory
     NSString *uniqueDirPath = [documentsDirectory stringByAppendingPathComponent:uniqueDirectoryName];
 
+    // Attempt to create the directory
     NSError *error = nil;
     if (![[NSFileManager defaultManager] createDirectoryAtPath:uniqueDirPath withIntermediateDirectories:YES attributes:nil error:&error]) {
         NSLog(@"Error creating directory for saving images: %@", error);
-        return nil;
+        return nil; // Return nil in case of failure
     }
 
+    // Return the path of the successfully created directory
     return uniqueDirPath;
 }
 
 #pragma mark - Pixel Logging Data
 
+/**
+ Logs information about a random set of pixels from an image's raw data, with optional verbose output that includes decoded character data from the pixel values.
+
+ @param rawData The raw pixel data of the image.
+ @param width The width of the image in pixels.
+ @param height The height of the image in pixels.
+ @param message A message or identifier to include in the log for context.
+ @param verboseLogging If true, logs detailed information including decoded data; if false, performs basic logging.
+*/
 void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"%s - Invalid data or dimensions. Logging aborted.", message);
@@ -175,7 +251,7 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
             // Using arc4random_uniform() for better randomness and to avoid modulo bias
             unsigned int randomX = arc4random_uniform((unsigned int)width);
             unsigned int randomY = arc4random_uniform((unsigned int)height);
-            size_t pixelIndex = (randomY * width + randomX) * 4;
+            size_t pixelIndex = (randomY * width + randomX) * 4; // Assumes 4 bytes per pixel (RGBA)
 
             if (pixelIndex + 3 < width * height * 4) {
                 NSLog(@"%s - Pixel[%u, %u]: R=%d, G=%d, B=%d, A=%d",
@@ -199,35 +275,38 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
     }
 }
 
-#pragma mark - Data
+#pragma mark - LogRandomPixelData
 
-void Data(unsigned char *rawData, size_t width, size_t height, const char *message) {
+/**
+ Logs information about a random set of pixels from an image's raw data.
+
+ @param rawData The raw pixel data of the image.
+ @param width The width of the image in pixels.
+ @param height The height of the image in pixels.
+ @param message A message or identifier to include in the log for context.
+*/
+void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, const char *message) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"%s - Invalid data or dimensions. Logging aborted.", message);
         return;
     }
 
     const int numberOfPixelsToLog = 5; // Number of random pixels to log
+    NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
 
-    if (verboseLogging) {
-        NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
+    for (int i = 0; i < numberOfPixelsToLog; i++) {
+        unsigned int randomX = arc4random_uniform((unsigned int)width);
+        unsigned int randomY = arc4random_uniform((unsigned int)height);
+        size_t pixelIndex = (randomY * width + randomX) * 4; // Assumes 4 bytes per pixel (RGBA)
 
-        for (int i = 0; i < numberOfPixelsToLog; i++) {
-            unsigned int randomX = arc4random_uniform((unsigned int)width);
-            unsigned int randomY = arc4random_uniform((unsigned int)height);
-            size_t pixelIndex = (randomY * width + randomX) * 4;
-
-            if (pixelIndex + 3 < width * height * 4) {
-                NSLog(@"%s - Pixel[%u, %u]: R=%d, G=%d, B=%d, A=%d",
-                      message, randomX, randomY,
-                      rawData[pixelIndex], rawData[pixelIndex + 1],
-                      rawData[pixelIndex + 2], rawData[pixelIndex + 3]);
-            } else {
-                NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
-            }
+        if (pixelIndex + 3 < width * height * 4) {
+            NSLog(@"%s - Pixel[%u, %u]: R=%d, G=%d, B=%d, A=%d",
+                  message, randomX, randomY,
+                  rawData[pixelIndex], rawData[pixelIndex + 1],
+                  rawData[pixelIndex + 2], rawData[pixelIndex + 3]);
+        } else {
+            NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
         }
-    } else {
-        NSLog(@"%s - Basic pixel logging executed.", message);
     }
 }
 
