@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time       1510 EST
+ * @time                 1515 EST
  *
  * License: GPL3
  *
@@ -27,9 +27,9 @@
  */
 #pragma mark - Headers
 
-#include <Foundation/Foundation.h>
-#include <UIKit/UIKit.h>
-#include <CoreGraphics/CoreGraphics.h>
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -77,7 +77,7 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 
 #pragma mark - Global Variables
 
-int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
+static int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
 
 #pragma mark - Utility Function Prototypes
 
@@ -91,7 +91,7 @@ void applyMultiplicativeNoise(float *pixel);
 void invertColor(float *pixel);
 void applyExtremeValues(float *pixel);
 void assignSpecialFloatValues(float *pixel);
-unsigned long hashString(char* str);
+unsigned long hashString(const char* str);
 
 #pragma mark - Image Processing Prototypes
 
@@ -108,9 +108,9 @@ void createBitmapContextLittleEndian(CGImageRef cgImg);
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg);
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg);
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
-void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging);
+void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verbose);
 
-void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verboseLogging);
+void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t height);
 void saveMonochromeImage(UIImage *image, NSString *identifier);
 
@@ -407,7 +407,7 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
 
 #pragma mark - Hash Function
 
-unsigned long hashString(char* str) {
+unsigned long hashString(const char* str) {
     unsigned long hash = 5381;
     int c;
 
@@ -1196,7 +1196,7 @@ void createBitmapContext1BitMonochrome(CGImageRef cgImg) {
         CGImageRelease(newCgImg); // Release the created CGImage
 
         // Save the monochrome image with a context-specific identifier
-        saveMonochromeImage(newImage, @"BitmapContext1BitMonochrome");
+        saveMonochromeImage(newImage, @"1Bit_Monochrome");
         NSLog(@"Modified UIImage with 1-bit Monochrome settings created and saved successfully.");
     }
 
@@ -1241,7 +1241,7 @@ void createBitmapContextBigEndian(CGImageRef cgImg) {
         CGImageRelease(newCgImg); // Release the created CGImage
 
         // Save the fuzzed image with a context-specific identifier
-        saveFuzzedImage(newImage, @"BitmapContextBigEndian");
+        saveFuzzedImage(newImage, @"Big_Endian");
         NSLog(@"Modified UIImage with Big Endian settings created and saved successfully.");
     }
 
@@ -1286,7 +1286,7 @@ void createBitmapContextLittleEndian(CGImageRef cgImg) {
         CGImageRelease(newCgImg); // Release the created CGImage
 
         // Save the fuzzed image with a context-specific identifier
-        saveFuzzedImage(newImage, @"BitmapContextLittleEndian");
+        saveFuzzedImage(newImage, @"Little_Endian");
         NSLog(@"Modified UIImage with Little Endian settings created and saved successfully.");
     }
 
@@ -1339,7 +1339,7 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
         CGImageRelease(newCgImg); // Release the created CGImage
 
         // Save the fuzzed image with a specific identifier
-        saveFuzzedImage(newImage, @"BitmapContext8Bit_InvertedColors");
+        saveFuzzedImage(newImage, @"8Bit_InvertedColors");
         NSLog(@"Modified UIImage with createBitmapContext8BitInvertedColors settings created and saved successfully.");
     }
 
@@ -1398,4 +1398,3 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     CGContextRelease(ctx); // Release the context to free up resources
 }
-
