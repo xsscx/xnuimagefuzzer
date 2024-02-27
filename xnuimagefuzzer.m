@@ -3,7 +3,7 @@
  * @brief      Proof of concept XNU Image Fuzzer
  * @author     @h02332 | David Hoyt
  * @date       Modified 27 FEB 2024
- * @time                 1606 EST
+ * @time       1615 EST
  *
  * License: GPL3
  *
@@ -16,7 +16,7 @@
  * - [20/02/2024] [h02332] - Refactor Code & Fuzzing & Logging
  * - [21/02/2024] [h02332] - Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes
  * - [21/02/2024] [h02332] - PermaLink https://srd.cx/xnu-image-fuzzer/
- * - [27/02/2024] [h02332] - Refactor Code & Fuzzing & Logging & Injected Strings
+ * - [27/02/2024] [h02332] - Refactor Code & Fuzzing & Logging & Injected Strings + Function Documentation
  *
  * @section    TODO
  * - [ ] Grayscale Implementation
@@ -312,6 +312,31 @@ void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, con
 
 #pragma mark - applyEnhancedFuzzingToBitmapContext
 
+/**
+ * Applies enhanced fuzzing techniques to a bitmap context to test image processing resilience and security.
+ *
+ * This function iteratively processes each pixel in the given bitmap data, applying a range of fuzzing methods.
+ * These methods include injecting specific strings into the pixel data, applying visual distortions such as inversion,
+ * adding random noise, setting random colors, shifting pixel values, adjusting contrast, and swapping colors under
+ * certain conditions. This is designed to simulate various types of input data that an image processing system might
+ * encounter in the wild, helping to identify and rectify potential vulnerabilities and ensure robust handling of
+ * unexpected or maliciously crafted input.
+ *
+ * Parameters:
+ * @param rawData Pointer to the raw pixel data of the bitmap context. This data is modified in place.
+ * @param width The width of the bitmap in pixels.
+ * @param height The height of the bitmap in pixels.
+ * @param verboseLogging If true, logs detailed information about the fuzzing process and the specific transformations
+ *                       applied to the bitmap data. This is useful for debugging and understanding the fuzzing impact.
+ *
+ * Note:
+ * - The rawData buffer is expected to be in RGBA format, with each pixel represented by four consecutive bytes
+ *   corresponding to the red, green, blue, and alpha (transparency) values, respectively.
+ * - The function does not return a value but instead modifies the rawData buffer directly.
+ * - It is assumed that the rawData buffer is large enough to contain width * height pixels, each with 4 bytes of data.
+ * - This function demonstrates a range of image processing attacks and tests, making it a valuable tool for security
+ *   analysis and improvement of image handling routines.
+ */
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, bool verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"No valid raw data or dimensions available for enhanced fuzzing.");
@@ -422,6 +447,35 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
 
 #pragma mark - applyEnhancedFuzzingToBitmapContextWithFloats
 
+/**
+ * Applies advanced fuzzing techniques to a bitmap context using floating-point pixel data, based on an injection string index.
+ * This function is designed to test the resilience and security of image processing algorithms by applying a range of
+ * fuzzing methods that alter the pixel data in ways that could represent real-world corrupt or maliciously crafted inputs.
+ * The specific fuzzing technique applied is determined by hashing the injection string selected by the stringIndex parameter,
+ * allowing for a deterministic yet varied approach to fuzzing based on the content of the injection strings.
+ *
+ * Parameters:
+ * @param rawData Pointer to the raw pixel data of the bitmap context, represented as floating-point numbers. This data
+ *                is modified in place. Each pixel is expected to consist of four consecutive floats representing the
+ *                red, green, blue, and alpha (transparency) channels, respectively.
+ * @param width The width of the bitmap in pixels.
+ * @param height The height of the bitmap in pixels.
+ * @param verboseLogging If YES, detailed logging is enabled to provide insights into the fuzzing process, including
+ *                       the specific techniques applied and their effects on the pixel data.
+ * @param stringIndex An index into an array of strings that are used to select the fuzzing method. The string at this
+ *                    index is hashed, and the hash value determines the specific fuzzing technique applied.
+ *
+ * Note:
+ * - The function checks for valid input parameters, including non-null rawData, positive dimensions (width and height),
+ *   and a valid stringIndex within the range of available injection strings.
+ * - It utilizes different fuzzing techniques such as additive and multiplicative noise, inversion of color values,
+ *   setting pixels to extreme floating-point values (FLT_MAX, FLT_MIN), and introducing special floating-point values
+ *   (NAN, INFINITY, -INFINITY) to challenge the robustness of image processing routines.
+ * - The rawData buffer is directly modified to reflect the fuzzing effects, enabling immediate observation and analysis
+ *   of how such data alterations could impact image processing outcomes.
+ * - This function serves as a tool for developers and security analysts to preemptively identify and address potential
+ *   vulnerabilities in image processing algorithms, ensuring they can handle a wide variety of input scenarios safely.
+ */
 void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width, size_t height, BOOL verboseLogging, int stringIndex) {
     if (!rawData || width == 0 || height == 0 || stringIndex < 0 || stringIndex >= NUMBER_OF_STRINGS) {
         NSLog(@"Invalid parameters for enhanced fuzzing.");
@@ -499,6 +553,36 @@ unsigned long hashString(const char* str) {
 
 #pragma mark - applyEnhancedFuzzingToBitmapContextAlphaOnly
 
+/**
+ * Applies enhanced fuzzing techniques specifically to the alpha channel of a bitmap's pixel data. This function
+ * is designed to test and improve the resilience of image processing routines against unusual or extreme alpha
+ * values. It manipulates the alpha transparency data of an image in various ways to simulate potential edge cases
+ * or malicious inputs that an application might encounter.
+ *
+ * Parameters:
+ * @param alphaData Pointer to the alpha channel data of the bitmap context. Unlike RGBA data, this buffer contains
+ *                  only the alpha (transparency) values for each pixel, with one byte per pixel.
+ * @param width The width of the bitmap, indicating how many pixels are in a row.
+ * @param height The height of the bitmap, indicating the number of rows of pixels.
+ * @param verboseLogging A boolean flag that, when set to YES, enables detailed logging of the fuzzing operations
+ *                       performed on the alpha data. This can be useful for debugging purposes or for analyzing
+ *                       the effects of different fuzzing techniques.
+ *
+ * The function iterates over each pixel's alpha value and applies one of several fuzzing methods at random:
+ * - Inversion of the alpha value, which could reveal handling issues for semi-transparent pixels.
+ * - Randomly setting pixels to be fully transparent or fully opaque, testing extremes of the alpha range.
+ * - Adding random noise to the alpha value, simulating more subtle variations in transparency.
+ *
+ * Each method is designed to challenge the handling of alpha transparency in downstream image processing, aiding
+ * in the identification and correction of potential issues. By ensuring robust handling of varied alpha values,
+ * applications can better manage images with diverse transparency characteristics, enhancing visual quality and
+ * security.
+ *
+ * Note:
+ * - The function directly modifies the `alphaData` buffer, reflecting the applied fuzzing effects.
+ * - Validity checks at the beginning ensure that the function operates on a valid data buffer with positive
+ *   dimensions, aborting with a log message if any parameters are invalid.
+ */
 void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size_t width, size_t height, BOOL verboseLogging) {
     if (!alphaData || width == 0 || height == 0) {
         NSLog(@"No valid alpha data or dimensions available for enhanced fuzzing.");
@@ -543,6 +627,38 @@ void applyEnhancedFuzzingToBitmapContextAlphaOnly(unsigned char *alphaData, size
 
 #pragma mark - applyFuzzingToBitmapContext
 
+/**
+ * This function is designed to apply a fuzzing process to the RGB components of each pixel in a bitmap context
+ * and optionally encode additional data into the alpha channel of the first row of pixels. Fuzzing, in this context,
+ * involves introducing small, random variations to the RGB values of each pixel, which can be useful for testing
+ * the resilience of image processing algorithms to variations in input data.
+ *
+ * Parameters:
+ * @param rawData A pointer to the bitmap's raw pixel data, which is assumed to be in RGBA format, with 4 bytes per
+ *                pixel. The data is modified in-place, with the RGB components of each pixel being adjusted by
+ *                a random fuzz factor and the alpha channel of certain pixels being optionally used to encode data.
+ * @param width The width of the bitmap in pixels, indicating how many pixels are in each row.
+ * @param height The height of the bitmap in pixels, indicating the total number of rows in the bitmap.
+ *
+ * The fuzzing process iterates over every pixel in the bitmap, applying a random adjustment within a range of
+ * -25 to +25 to the R, G, and B components of each pixel. This range was chosen to introduce noticeable variations
+ * without drastically altering the original image. The alpha component of each pixel is left unchanged to preserve
+ * transparency data, except for specific pixels in the first row where additional data may be encoded.
+ *
+ * The function includes an optional feature to encode data into the alpha channel of the first row of pixels.
+ * This encoding uses the lengths of predefined strings, stored in an array named `injectStrings`, as the alpha
+ * values for the first few pixels. This technique demonstrates a simple method of embedding metadata or other
+ * information within an image in a manner that is likely to be preserved across various image processing operations.
+ *
+ * Note:
+ * - The use of `arc4random_uniform` ensures a more uniform distribution of fuzz factors and avoids the modulo bias
+ *   associated with simpler random number generation methods.
+ * - This function directly modifies the input `rawData`, reflecting the applied changes. Users of this function
+ *   should ensure that any necessary copies of the original data are made before calling this function if the
+ *   original, unmodified data is needed later.
+ * - The decision to not alter the alpha component for most of the image ensures that the visual impact of the fuzzing
+ *   is limited to color changes, with transparency remaining as originally defined.
+ */
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height) {
     NSLog(@"Beginning fuzzing operation on bitmap context.");
 
@@ -571,6 +687,49 @@ void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t he
 
 #pragma mark - debugMemoryHandling
 
+/**
+ * This function demonstrates the allocation and deallocation of memory using memory mapping.
+ * It is designed to help in debugging memory handling by programmatically allocating and
+ * then freeing a fixed number of memory chunks. This can be particularly useful for testing
+ * the behavior of an application in scenarios where memory availability fluctuates, as well
+ * as for understanding and demonstrating the use of the mmap and munmap system calls.
+ *
+ * The function operates by attempting to allocate 64 chunks of memory, each of size 0x10000
+ * bytes (64 KB), and then deallocating them. The allocations are done via the mmap system call,
+ * which maps pages of memory into the process's address space, and the deallocations are
+ * performed using the munmap system call, which unmaps previously mapped pages.
+ *
+ * Steps performed by the function:
+ * 1. Initialize an array of pointers, `chunks`, to keep track of the memory addresses of the
+ *    allocated chunks.
+ * 2. For each chunk:
+ *    a. Attempt to allocate it using mmap with the flags MAP_ANONYMOUS and MAP_PRIVATE, indicating
+ *       that the mapping is not backed by any file and that updates to the mapping are not
+ *       visible to other processes.
+ *    b. If the allocation fails (mmap returns MAP_FAILED), log an error message and continue
+ *       to the next chunk.
+ *    c. If the allocation succeeds, fill the allocated memory with the byte 0x41 (ASCII 'A')
+ *       using memset, to simulate initializing the memory, and log the address of the allocated
+ *       chunk.
+ *    d. Store the address of the allocated chunk in the `chunks` array for later deallocation.
+ * 3. After all allocations are attempted, iterate over the `chunks` array to deallocate each
+ *    chunk of memory using munmap.
+ *    a. If munmap succeeds, log a success message.
+ *    b. If munmap fails (returns -1), log an error message.
+ *
+ * This function is useful for:
+ * - Demonstrating how mmap and munmap can be used for memory management.
+ * - Debugging and testing the memory allocation and deallocation behavior of applications.
+ * - Learning about the handling of memory at a lower level than what high-level languages
+ *   typically expose.
+ *
+ * Note:
+ * - This function uses NSLog for logging, which is common in Objective-C environments, especially
+ *   on macOS or iOS platforms. This logging mechanism can be substituted with other logging
+ *   approaches depending on the target environment or platform.
+ * - The specific size of each memory chunk (0x10000 bytes) and the number of chunks (64) are
+ *   arbitrary and can be adjusted based on the needs of the application or the debugging scenario.
+ */
 void debugMemoryHandling(void) {
     const size_t sz = 0x10000;
     char* chunks[64] = { NULL };
@@ -598,6 +757,40 @@ void debugMemoryHandling(void) {
 
 #pragma mark - saveFuzzedImage
 
+/**
+ * Saves a modified (fuzzed) UIImage to the documents directory with a filename based on a given context description.
+ *
+ * @param image The UIImage object that has been modified and needs to be saved.
+ * @param contextDescription A NSString describing the context in which the image was fuzzed,
+ *        used to generate a unique file name for the image.
+ *
+ * The function performs several key steps:
+ * 1. Validation of `contextDescription` to ensure it is non-nil and non-empty. This prevents
+ *    potential file path issues or overwriting files due to invalid or duplicate filenames.
+ * 2. Generation of a unique filename using the `contextDescription`, prefixed with "fuzzed_image_"
+ *    and suffixed with ".png" to indicate the file format.
+ * 3. Retrieval of the documents directory path, which is a common location for storing user-generated
+ *    or application-generated files. The use of `NSSearchPathForDirectoriesInDomains` with
+ *    `NSDocumentDirectory` ensures compatibility across iOS devices and versions.
+ * 4. Creation of the full file path by appending the generated filename to the documents directory path.
+ * 5. Conversion of the UIImage to PNG data using `UIImagePNGRepresentation`, which prepares the image
+ *    for saving by encoding it in a widely supported format.
+ * 6. Writing the PNG data to the file system at the specified path using `writeToFile:atomically:`,
+ *    with atomic writing enabled to ensure data integrity in case the write operation is interrupted.
+ * 7. Logging the outcome of the save operation, indicating success or failure along with the relevant
+ *    context description and file path. This feedback is valuable for debugging and user notifications.
+ *
+ * Usage scenarios:
+ * - Saving images after applying test or experimental modifications, such as fuzzing for security testing.
+ * - Persisting user-modified images in applications that allow for image editing or customization.
+ * - Generating and saving a series of images programmatically for later review or analysis.
+ *
+ * Note:
+ * - This function assumes the presence of a valid UIImage object and an appropriate context description.
+ *   Callers should handle scenarios where the image or description might not meet these requirements.
+ * - The function uses NSLog for logging, which is suitable for development and debugging. For production
+ *   applications, consider using a more flexible logging framework or handling errors more gracefully.
+ */
 void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
     // Ensure contextDescription is valid to prevent file path issues
     if (contextDescription == nil || [contextDescription length] == 0) {
