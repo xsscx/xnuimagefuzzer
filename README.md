@@ -54,10 +54,11 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
     INJECT_STRING_3,
     INJECT_STRING_4
 };
+*/
 ```
 ### Run Target Jailbroken Device
 #### File Access
-If you have an SRD, Jailbroken, arm Device, or Virtual Device, you have access directly to the Fuzzed Files via Container.
+If you have an SRD, Jailbroken, Desktop or Virtual Device, you have access directly to the Fuzzed Files via Container.
 ```
 Starting up...
 Loading file: seed-small-7.png
@@ -77,7 +78,7 @@ cp /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png
 ```
 ### Run Target arm64 & arm64e 
 #### File Access
-I have Enable File Sharing via Info.plist
+File Sharing is Enabled via Info.plist
 
 #### Access Files via iTunes or the Files App
 
@@ -85,7 +86,7 @@ I have Enable File Sharing via Info.plist
 
 - Files App: Open the Files app on your iPhone, navigate to the "On My iPhone" section, find your app's folder, and you'll see the saved images. From here, you can select and share files via AirDrop. 
 
-### Fuzzing on Desktop
+### Use More Cores
 - XNU Image Fuzzer Example Code using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/xnuimagefuzzer.m]. 
 - The iOSOnMac implementation offers a more robust method for Fuzzing and Collecting the post-processed Images. 
 
