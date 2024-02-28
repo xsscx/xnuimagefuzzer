@@ -1,6 +1,6 @@
 # XNU Image Fuzzer 
 
-Last Updated: February 27, 2024, 2115 EST
+Last Updated: February 28, 2024, 1446 EST
 
 ## Project summary
 
@@ -191,5 +191,51 @@ All enhanced fuzzing processes completed.
 Fuzzed image for '32bit_float4' context saved to /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_32bit_float4.png
 Modified UIImage with 32-bit float, 4-component settings created and saved successfully.
 Completed image processing for permutation 12
-End of Run...
+[*] COMM_PAGE_SIGNATURE: commpage 64-bit
+[*] COMM_PAGE_VERSION: 3
+[*] COMM_PAGE_NCPUS: 8
+[*] COMM_PAGE_CPU_CAPABILITIES64:
+	MMX: false
+	SSE: false
+	SSE2: false
+	SSE3: true
+	Cache32: false
+	Cache64: false
+	Cache128: true
+	FastThreadLocalStorage: true
+	SupplementalSSE3: true
+	64Bit: true
+	SSE4_1: true
+	SSE4_2: true
+	AES: true
+	InOrderPipeline: true
+	Slow: true
+	UP: false
+	NumCPUs: 8
+	AVX1_0: true
+	RDRAND: true
+	F16C: true
+	ENFSTRG: false
+	FMA: true
+	AVX2_0: false
+	BMI1: false
+	BMI2: true
+	RTM: true
+	HLE: true
+	ADX: false
+	RDSEED: false
+	MPX: true
+	SGX: true
+[*] Done dumping comm page.
+Device Information:
+  Name: iPad
+  Model: iPad
+  System Name: iPadOS
+  System Version: 17.3
+  Identifier For Vendor: 666-666-666
+  Battery Level: 1.000000
+  Battery State: 3
+Kernel Version: 23.3.0
+Hardware Model: 23.3.0
+CPU Type: 23.3.0
 ```
