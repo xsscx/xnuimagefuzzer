@@ -26,7 +26,7 @@ I am David Hoyt. I was in the Apple Security Research Device Program for 2021 & 
 - Copy the Source File and Paste into main.m
 - Copy the Flowers.exr, and any Image File Type into your XCode Project
 - Edit the Scheme
-  - For Arguements on Launch
+  - For Arguments on Launch
     - Flowers.exr, or any Image File Type
     - -1
 - Run
