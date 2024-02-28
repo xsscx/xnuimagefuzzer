@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.0.8
+ *  @version 1.0.9
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1331,8 +1331,8 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
         UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
         CGImageRelease(newCgImg);
 
-        // Assuming saveFuzzedImage is implemented elsewhere
-        //saveFuzzedImage(newImage, @"premultiplied_first_alpha");
+
+        saveFuzzedImage(newImage, @"premultiplied_first_alpha");
 
         NSLog(@"Modified UIImage created and saved successfully.");
     }
