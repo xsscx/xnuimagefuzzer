@@ -148,8 +148,6 @@ unsigned long hashString(const char* str);
 
 #pragma mark - Image Processing Prototypes
 
-#pragma mark - Image Processing Prototypes
-
 /**
 @brief Creates a bitmap context with standard RGB color space.
 @details Suitable for most images, this context supports a wide range of colors and is the go-to choice for standard image processing.
