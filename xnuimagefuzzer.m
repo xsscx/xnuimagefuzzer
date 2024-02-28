@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 27 FEB 2024
- *  @version 1.0.6
+ *  @version 1.0.7
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -123,7 +123,7 @@ custom messages, improving error diagnosis.
 @details This global variable, when set to 1, enables detailed logging across the fuzzer.
 It aids in debugging and provides insights into the fuzzer's operations.
 */
-static int verboseLogging = 0; // Enable detailed logging: 1 for yes, 0 for no
+static int verboseLogging = 1; // Enable detailed logging: 1 for yes, 0 for no
 
 #pragma mark - Utility Function Prototypes
 
@@ -422,13 +422,14 @@ void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, con
 #pragma mark - applyEnhancedFuzzingToBitmapContext
 
 /**
-@brief Applies enhanced fuzzing techniques to bitmap data to test image processing resilience and security.
-@details This function targets the robustness of image processing routines by applying a comprehensive set of fuzzing techniques directly to the raw pixel data of a bitmap. Techniques include string injections, visual distortions (e.g., inversion), noise addition, random color adjustments, pixel value shifts, contrast modifications, and color swapping under predefined conditions. The goal is to simulate a variety of real-world inputs, both benign and malicious, thereby uncovering potential vulnerabilities and ensuring the image processing system can handle unexpected inputs gracefully.
+@brief Applies enhanced fuzzing techniques to bitmap data.
+
+@discussion This function targets the robustness of image processing routines by applying a comprehensive set of fuzzing techniques directly to the raw pixel data of a bitmap. Techniques include string injections to simulate security testing scenarios, visual distortions such as inversion, noise addition, random color adjustments, pixel value shifts, contrast modifications, and color swapping under predefined conditions. The goal is to simulate a variety of real-world inputs, both benign and malicious, thereby uncovering potential vulnerabilities and ensuring the image processing system can handle unexpected inputs gracefully.
 
 @param rawData Pointer to the raw pixel data of the bitmap, which is modified in place. This data should be in RGBA format, where each pixel is represented by four bytes for red, green, blue, and alpha components.
 @param width The width of the bitmap in pixels, used to navigate the pixel data array.
 @param height The height of the bitmap in pixels, indicating the total number of pixel rows in the rawData.
-@param verboseLogging If enabled (true), the function logs detailed information about each fuzzing action and its effect on the pixel data. This can be invaluable for debugging and for gaining insights into how different fuzzing techniques impact the bitmap.
+@param verboseLogging If enabled (true), the function logs detailed information about each fuzzing action and its effect on the pixel data, facilitating debugging and providing insights into the impact of different fuzzing techniques on the bitmap.
 
 @note The rawData buffer is expected to accommodate width * height pixels, each represented by 4 bytes. The function directly modifies this buffer, reflecting the applied fuzzing techniques without returning any value. It serves as a critical tool for enhancing the security and robustness of image processing algorithms by exposing them to a broad spectrum of test conditions.
 */
@@ -447,32 +448,39 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
     }
 
     for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
+            for (size_t x = 0; x < width; x++) {
+                size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
 
             // Using arc4random_uniform for random number generation
             int fuzzMethod = arc4random_uniform(6); // Six methods
 
-            if (totalStringsInjected < NUMBER_OF_STRINGS) {
-                char *currentString = injectStrings[stringIndex];
-                size_t stringLength = strlen(currentString);
-
-                if (injectIndex < stringLength) {
-                    // Encode a character into the least significant bits of the first three channels of a pixel
-                    for (int i = 0; i < 3; i++) {
-                        // Clear the least significant bit
-                        rawData[pixelIndex + i] &= 0xFE;
-                        // Set the bit based on the current character's bit
-                        rawData[pixelIndex + i] |= (currentString[injectIndex] >> (i*2)) & 0x01;
+                if (totalStringsInjected < NUMBER_OF_STRINGS) {
+                    if (injectIndex == 0 && verboseLogging) { // Log at the start of injecting a new string
+                        NSLog(@"Starting injection of string %zu: %s", stringIndex + 1, injectStrings[stringIndex]);
                     }
-                    injectIndex++;
+
+                    char *currentString = injectStrings[stringIndex];
+                    size_t stringLength = strlen(currentString);
+
+                    if (injectIndex < stringLength) {
+                        // Encode a character into the least significant bits of the first three channels of a pixel
+                        for (int i = 0; i < 3; i++) {
+                            rawData[pixelIndex + i] &= 0xFE; // Clear the least significant bit
+                            rawData[pixelIndex + i] |= (currentString[injectIndex] >> (i * 2)) & 0x01; // Set the bit based on the current character's bit
+                        }
+                        injectIndex++;
+                    }
+                    
                     if (injectIndex == stringLength) {
+                        if (verboseLogging) {
+                            NSLog(@"Completed injection of string %zu: %s", stringIndex + 1, currentString);
+                        }
                         injectIndex = 0; // Reset the injection index for the next string
                         stringIndex++; // Move to the next string
                         totalStringsInjected++; // Increment the count of strings injected
-                    }
+                   }
                 }
-            }
+            
             
             switch (fuzzMethod) {
                 case 0: // Inversion
@@ -536,83 +544,106 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
     }
 
     if (verboseLogging) {
-        NSLog(@"Enhanced fuzzing on bitmap context completed");
+        if (totalStringsInjected == NUMBER_OF_STRINGS) {
+            NSLog(@"Successfully injected all %zu strings.", totalStringsInjected);
+        } else {
+            NSLog(@"Error: Not all strings were successfully injected. Total injected: %zu", totalStringsInjected);
+        }
+        NSLog(@"Enhanced fuzzing on bitmap context completed.");
     }
 }
 
 #pragma mark - applyEnhancedFuzzingToBitmapContextWithFloats
 
 /**
-@brief Applies advanced fuzzing techniques to bitmap data using floating-point pixel representations.
-@details This function enhances the security testing of image processing algorithms by applying a variety of fuzzing methods to floating-point pixel data. By altering pixel values in ways that mimic corrupt or maliciously crafted inputs, it aims to uncover how resilient and secure image processing algorithms are under adverse conditions. The choice of fuzzing technique is determined by hashing an injection string selected via the stringIndex parameter, ensuring a deterministic, yet diverse approach to testing based on the content of predefined injection strings.
+@brief Applies enhanced fuzzing techniques to bitmap data using 32-bit floating-point precision.
 
-@param rawData Pointer to the raw pixel data of the bitmap, modified in place. Each pixel is expected to comprise four consecutive floats for the red, green, blue, and alpha channels.
-@param width The width of the bitmap in pixels, crucial for determining the data's layout and processing.
-@param height The height of the bitmap in pixels, indicating the vertical extent of the data to be processed.
-@param verboseLogging If set to YES, enables detailed logging that reveals insights into the fuzzing operations, including which techniques are applied and their effects on the bitmap data.
-@param stringIndex An index into an array of predefined strings, used to select the fuzzing method. The selected string is hashed, and its hash value dictates the specific fuzzing technique employed.
+@discussion This function is designed to test the robustness of image processing algorithms by applying a variety of fuzzing techniques to the raw pixel data of a bitmap. It iterates through a predefined set of strings, each dictating a specific fuzzing method based on its hash value. Techniques include additive and multiplicative noise, color inversion, setting extreme values, and applying special floating-point values such as NaN or Infinity. The function aims to uncover potential vulnerabilities by simulating real-world inputs and ensuring that the image processing system can gracefully handle unexpected or malicious inputs.
 
-@note The function performs validity checks on its inputs, such as ensuring rawData is not null, dimensions are positive, and the stringIndex is within the bounds of the string array. It employs diverse fuzzing strategies like additive and multiplicative noise, color inversion, setting extreme floating-point values, and introducing special floating-point values (NaN, infinity) to test the processing algorithms' boundaries. By modifying the rawData buffer directly, it allows for an immediate assessment of how altered data might affect image processing results, making it an invaluable tool for proactively strengthening the robustness of such algorithms against a wide array of input scenarios.
+@param rawData Pointer to the raw pixel data of the bitmap, which is modified in place. The data is assumed to be in RGBA format, with each pixel represented by four 32-bit floating-point values for red, green, blue, and alpha components.
+@param width The width of the bitmap in pixels, used to calculate the location of each pixel in the rawData array.
+@param height The height of the bitmap in pixels, used along with the width to navigate through the rawData array.
+@param verboseLogging A boolean value that, when set to YES, enables detailed logging of each fuzzing action and its effects on the pixel data. This facilitates debugging and provides insights into how different fuzzing techniques impact the bitmap.
+
+@note The function modifies the rawData buffer in place, reflecting the applied fuzzing techniques. The buffer is expected to accommodate width * height pixels, with each pixel's data represented by four 32-bit floating-point values. It is a critical tool for enhancing the security and robustness of image processing algorithms by exposing them to a broad spectrum of test conditions.
+
+Example usage:
+@code
+float *rawData = ...; // Assume this is already allocated and populated with image data
+size_t width = ...;   // The width of the image
+size_t height = ...;  // The height of the image
+BOOL verboseLogging = YES; // Enable detailed logging
+applyEnhancedFuzzingToBitmapContextWithFloats(rawData, width, height, verboseLogging);
+@endcode
 */
-void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width, size_t height, BOOL verboseLogging, int stringIndex) {
-    if (!rawData || width == 0 || height == 0 || stringIndex < 0 || stringIndex >= NUMBER_OF_STRINGS) {
+void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width, size_t height, BOOL verboseLogging) {
+    if (!rawData || width == 0 || height == 0) {
         NSLog(@"Invalid parameters for enhanced fuzzing.");
         return;
     }
 
-    if (verboseLogging) {
-        NSLog(@"Starting enhanced fuzzing with injection string: %s", injectStrings[stringIndex]);
-    }
+    for (int stringIndex = 0; stringIndex < NUMBER_OF_STRINGS; stringIndex++) {
+        // Log the start of fuzzing with the specific injection string
+        if (verboseLogging) {
+            NSLog(@"Starting enhanced fuzzing with injection string %d: %s", stringIndex + 1, injectStrings[stringIndex]);
+        }
 
-    // Hash the selected injection string to determine the fuzzing method
-    unsigned long hash = hashString(injectStrings[stringIndex]) % 5; // Modulo by 5 to fit our method range
+        // Hash the selected injection string to determine the fuzzing method
+        unsigned long hash = hashString(injectStrings[stringIndex]) % 5; // Modulo by 5 to fit our method range
 
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
+        for (size_t y = 0; y < height; y++) {
+            for (size_t x = 0; x < width; x++) {
+                size_t pixelIndex = (y * width + x) * 4; // Assuming RGBA format
 
-            // Apply fuzzing based on hash of injection string
-            switch (hash) {
-                case 0:
-                    // Additive noise
-                    for (int i = 0; i < 4; i++) {
-                        rawData[pixelIndex + i] += ((float)rand() / RAND_MAX * 2.0f - 1.0f); // Noise range [-1, 1]
-                    }
-                    break;
-                case 1:
-                    // Multiplicative noise (scale)
-                    for (int i = 0; i < 4; i++) {
-                        rawData[pixelIndex + i] *= ((float)rand() / RAND_MAX * 2.0f); // Scale range [0, 2]
-                    }
-                    break;
-                case 2:
-                    // Inversion
-                    for (int i = 0; i < 3; i++) { // Skipping alpha for inversion
-                        rawData[pixelIndex + i] = 1.0f - rawData[pixelIndex + i];
-                    }
-                    break;
-                case 3:
-                    // Extreme values
-                    for (int i = 0; i < 4; i++) {
-                        rawData[pixelIndex + i] = (rand() % 2) ? FLT_MAX : FLT_MIN;
-                    }
-                    break;
-                case 4:
-                    // Special floating-point values
-                    for (int i = 0; i < 4; i++) {
-                        switch (rand() % 3) {
-                            case 0: rawData[pixelIndex + i] = NAN; break;
-                            case 1: rawData[pixelIndex + i] = INFINITY; break;
-                            case 2: rawData[pixelIndex + i] = -INFINITY; break;
+                // Apply fuzzing based on hash of injection string
+                switch (hash) {
+                    case 0:
+                        // Additive noise
+                        for (int i = 0; i < 4; i++) {
+                            rawData[pixelIndex + i] += ((float)rand() / RAND_MAX * 2.0f - 1.0f); // Noise range [-1, 1]
                         }
-                    }
-                    break;
+                        break;
+                    case 1:
+                        // Multiplicative noise (scale)
+                        for (int i = 0; i < 4; i++) {
+                            rawData[pixelIndex + i] *= ((float)rand() / RAND_MAX * 2.0f); // Scale range [0, 2]
+                        }
+                        break;
+                    case 2:
+                        // Inversion
+                        for (int i = 0; i < 3; i++) { // Skipping alpha for inversion
+                            rawData[pixelIndex + i] = 1.0f - rawData[pixelIndex + i];
+                        }
+                        break;
+                    case 3:
+                        // Extreme values
+                        for (int i = 0; i < 4; i++) {
+                            rawData[pixelIndex + i] = (rand() % 2) ? FLT_MAX : FLT_MIN;
+                        }
+                        break;
+                    case 4:
+                        // Special floating-point values
+                        for (int i = 0; i < 4; i++) {
+                            switch (rand() % 3) {
+                                case 0: rawData[pixelIndex + i] = NAN; break;
+                                case 1: rawData[pixelIndex + i] = INFINITY; break;
+                                case 2: rawData[pixelIndex + i] = -INFINITY; break;
+                            }
+                        }
+                        break;
+                }
             }
         }
-    }
 
+        // Log completion of the fuzzing for the specific injection string
+        if (verboseLogging) {
+            NSLog(@"Enhanced fuzzing with injection string %d: %s completed", stringIndex + 1, injectStrings[stringIndex]);
+        }
+    }
+    
+    // Final log to indicate completion of all fuzzing processes
     if (verboseLogging) {
-        NSLog(@"Enhanced fuzzing with injection string completed");
+        NSLog(@"All enhanced fuzzing processes completed.");
     }
 }
 
@@ -1584,7 +1615,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
 
     // Cycle through injection strings or select based on specific criteria
     static int currentStringIndex = 0; // Example: simple cycling mechanism
-    applyEnhancedFuzzingToBitmapContextWithFloats(rawData, width, height, YES, currentStringIndex);
+    applyEnhancedFuzzingToBitmapContextWithFloats(rawData, width, height, YES);
     currentStringIndex = (currentStringIndex + 1) % NUMBER_OF_STRINGS; // Move to the next string for the next call
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
@@ -2047,7 +2078,7 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     // Cycle through injection strings or select based on specific criteria
     static int currentStringIndex = 0; // Example: simple cycling mechanism
-    applyEnhancedFuzzingToBitmapContextWithFloats((float*)CGBitmapContextGetData(ctx), width, height, YES, currentStringIndex);
+    applyEnhancedFuzzingToBitmapContextWithFloats((float*)CGBitmapContextGetData(ctx), width, height, YES);
     currentStringIndex = (currentStringIndex + 1) % NUMBER_OF_STRINGS; // Move to the next string for the next call
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
