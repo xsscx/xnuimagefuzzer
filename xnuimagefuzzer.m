@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.9
+ *  @version 1.2.0
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -2325,19 +2325,19 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
 static os_log_t createBitmapContextLog;
 
 /**
- Creates a bitmap graphics context optimized for 32-bit floating-point components, utilizing os_signpost for performance measurement.
- 
- @discussion This function establishes a high-precision bitmap graphics context suitable for HDR (High Dynamic Range) image processing. It utilizes 32-bit floating-point precision for each component (RGBA), offering advanced capabilities for color grading, exposure adjustments, and detailed image manipulation. Performance logging with os_signpost aids in performance analysis and optimization, providing insights into execution time and potential bottlenecks.
- 
- @param cgImg A CGImageRef representing the source image. Must not be NULL.
- 
- Example Usage:
- @code
- CGImageRef sourceImage = // Obtain your source image
+ Creates a bitmap graphics context optimized for 32-bit floating-point components, suitable for high dynamic range (HDR) image processing.
+
+ This function establishes a bitmap graphics context with advanced capabilities for detailed image manipulation, including color grading and exposure adjustments. It's tailored for scenarios requiring extended dynamic range and precision. Performance logging with `os_signpost` aids in performance analysis, providing insights into execution time and potential bottlenecks.
+
+ @param cgImg A `CGImageRef` representing the source image. This image is used as the basis for creating the bitmap context. The image must not be `NULL`.
+
+ @discussion The function initializes an `os_log_t` object for logging and uses `os_signpost` to mark the start and end of the bitmap context creation process. It configures the context for 32-bit floating-point components in the RGBA color model, ensuring high-fidelity image processing. If the creation fails at any step, such as failing to create the color space or the context itself, the function logs an error and exits early.
+
+ Example usage:
+ ```objective-c
+ CGImageRef sourceImage = [UIImage imageNamed:@"example.png"].CGImage;
  createBitmapContext32BitFloat4Component(sourceImage);
- @endcode
- 
- @note The "cx.src.xnuimagefuzzer" identifier should be replaced with your actual reverse DNS to avoid logging conflicts.
+@note Ensure the source image (cgImg) is valid before passing it to this function. The "cx.src.xnuimagefuzzer" identifier in os_log_create should be replaced with your actual reverse DNS to avoid logging conflicts.
 */
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     static dispatch_once_t onceToken;
