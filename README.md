@@ -57,8 +57,7 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 ```
 ### Run Target Jailbroken Device
 #### File Access
-1. If you have a Jailbroken or Virtual Device, you have access directly to the Fuzzed Files.
-2. If you have an arm-based Mac, you can use it as the Run Target, and again you have access directly to the Fuzzed Files.
+1. If you have an SRD, Jailbroken, arm Device, or Virtual Device, you have access directly to the Fuzzed Files via Container.
 ```
 Starting up...
 Loading file: seed-small-7.png
@@ -67,7 +66,7 @@ Image path: /private/var/folders/pj/.../d/Wrapper/XNU Image Fuzzer.app/seed-smal
 Shift pixel values applied at Pixel[343, 407]
 Enhanced fuzzing on bitmap context completed
 Fuzzed image for '16bit_depth' context saved to /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png
-
+...
 Fuzzed image for 'hdr_float' context saved to /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_hdr_float.png
 Modified UIImage with HDR and floating-point components created and saved successfully.
 Completed image processing for permutation 6
@@ -78,26 +77,14 @@ cp /Users/.../Library/Containers/.../Data/Documents/fuzzed_image_16bit_depth.png
 ```
 ### Run Target arm64 & arm64e 
 #### File Access
-Enable File Sharing for Your App
-First, you need to enable iTunes File Sharing or make your app's documents available in the Files app:
-
-- Modify Info.plist: Add the UIFileSharingEnabled (Application supports iTunes file sharing) key and set it to YES
-
-Then, To make files accessible in the Files app, also add:
-  - LSSupportsOpeningDocumentsInPlace key and set it to YES
+I have Enable File Sharing via Info.plist
 
 #### Access Files via iTunes or the Files App
 
 - iTunes File Sharing: Connect your iPhone to a computer, open iTunes, select your device, go to the "File Sharing" section, select your app, and you should see the files listed. You can then save them to your computer.
 
-- Files App: Open the Files app on your iPhone, navigate to the "On My iPhone" section, find your app's folder, and you'll see the saved images. From here, you can select and share files via AirDrop or other 
-## Background
-I had been using Jackalope for Fuzzing and to confirm that it could find easy to identify Bugs. Looking deeper at Jackalope, I found minor UAF, OOB, NPTR that impacted some results given the Seeding. 
-
-I wrote this Objective-C XNU Image Fuzzer for A/B Testing along side Jackalope, and the iOsOnMac Interposing Code. The Results were so Interesting I increased this Fuzzer Scope, then wrote Interposing Code that will drop to LLDB Debugger when the correct Signal is Indicated. 
-
-My iOsOnMac Code also modified TinyInst and modifying the TinyInst main.cpp and instrumentation.cpp, using modified Headers to Anonymize Memory for Collaboration. See URL https://github.com/xsscx/macos-research/issues/2 for details on the TinyInst mods.
-
+- Files App: Open the Files app on your iPhone, navigate to the "On My iPhone" section, find your app's folder, and you'll see the saved images. From here, you can select and share files via AirDrop. 
+## At Scale Fuzzing
 You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/xnuimagefuzzer.m]. The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
 
 ### Big Picture
@@ -121,7 +108,8 @@ The example Code provides the ability to change a few Numbers in a Function() an
 
 For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and for arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
 
-This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. I Ported my C++ Code to Objective-C. If you have Questions, then Open an Issue.
+- This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. 
+- If you have Questions, then Open an Issue.
 
 ### XCode Crash
 If you have completed the suggested Quick Start, and copied Flowers.exr into XCode, have you seen the EXR Crash for XCode yet?
