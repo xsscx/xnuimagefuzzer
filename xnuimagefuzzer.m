@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.1
+ *  @version 1.1.2
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -162,7 +162,51 @@ char *signature(void) {
     return signature;
 }
 
-#pragma mark - Dump
+
+#pragma mark - DumpiDeviceInfo
+
+/**
+ * Gathers and logs detailed device information.
+ *
+ * This function retrieves various pieces of information about the current device,
+ * such as the device's name, model, operating system name and version, and the unique
+ * identifier for the vendor. It then logs this information using NSLog.
+ *
+ * Example output:
+ *
+ *     Device Information:
+ *       Name: iPhone
+ *       Model: iPhone
+ *       System Name: iOS
+ *       System Version: 13.3
+ *       Identifier For Vendor: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+ *
+ * Note:
+ * - The function enables battery monitoring temporarily to fetch the battery level and state.
+ * - The `identifierForVendor` represents a unique ID for the app’s vendor on the device.
+ *
+ * @warning The battery level and state are only available on iOS and iPadOS, and their accuracy
+ *          can be affected by various factors.
+ *
+ * @see `UIDevice` class documentation for more information on the properties used.
+ */
+void dumpiDeviceInfo(void) {
+    UIDevice *device = [UIDevice currentDevice];
+    
+    NSLog(@"Device Information:");
+    NSLog(@"  Name: %@", device.name);
+    NSLog(@"  Model: %@", device.model);
+    NSLog(@"  System Name: %@", device.systemName);
+    NSLog(@"  System Version: %@", device.systemVersion);
+    NSLog(@"  Identifier For Vendor: %@", device.identifierForVendor.UUIDString);
+    
+    // Battery information
+    device.batteryMonitoringEnabled = YES;
+    NSLog(@"  Battery Level: %f", device.batteryLevel);
+    NSLog(@"  Battery State: %ld", (long)device.batteryState);
+}
+
+#pragma mark - DumpCommpage
 /**
  Dumps various pieces of information from the system's commpage.
 
@@ -1015,6 +1059,7 @@ int main(int argc, const char * argv[]) {
 
         processImage(image, permutation);
         dump_comm_page();
+        dumpiDeviceInfo();
         NSLog(@"End of Run...");
     }
 
