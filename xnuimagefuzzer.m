@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.0
+ *  @version 1.1.1
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
- *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern + Save File types
+ *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -56,6 +56,7 @@ image processing, UI interaction, and basic C operations.
 #include <stdbool.h>
 #include <float.h>
 #include <string.h>
+#include <stdint.h>
 
 #pragma mark - Constants
 
@@ -68,6 +69,8 @@ number of permutations in image processing.
 */
 #define ALL -1 // A special flag used to indicate an operation applies to all items or states.
 #define MAX_PERMUTATION 12 // The maximum number of permutations or variations to be applied in image processing.
+#define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
+#define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
 
 #pragma mark - Injection Strings Configuration
 
@@ -125,6 +128,81 @@ custom messages, improving error diagnosis.
 It aids in debugging and provides insights into the fuzzer's operations.
 */
 static int verboseLogging = 1; // Enable detailed logging: 1 for yes, 0 for no
+
+#pragma mark - CPU_CAP
+
+const char *cpu_cap_strings[] = {
+    "MMX", "SSE", "SSE2", "SSE3", "Cache32", "Cache64", "Cache128",
+    "FastThreadLocalStorage", "SupplementalSSE3", "64Bit", "SSE4_1", "SSE4_2",
+    "AES", "InOrderPipeline", "Slow", "UP", "NumCPUs", "AVX1_0", "RDRAND",
+    "F16C", "ENFSTRG", "FMA", "AVX2_0", "BMI1", "BMI2", "RTM", "HLE", "ADX",
+    "RDSEED", "MPX", "SGX"
+};
+
+#pragma mark - Signature
+/**
+ Reads the system's "commpage" to get the signature.
+
+ This function allocates memory for the signature and copies the signature
+ from the COMM_PAGE64_BASE_ADDRESS. The caller is responsible for freeing
+ the allocated memory.
+
+ - Returns: A pointer to a null-terminated string containing the commpage signature.
+            The caller must free this memory using `free`.
+ */
+// Improved signature function with error handling
+char *signature(void) {
+    char *signature = malloc(0x10 + 1); // +1 for null terminator
+    if (!signature) {
+        fprintf(stderr, "Error: Failed to allocate memory for signature.\n");
+        return NULL;
+    }
+    memcpy(signature, (const char *)COMM_PAGE64_BASE_ADDRESS, 0x10);
+    signature[0x10] = '\0'; // Ensure null termination
+    return signature;
+}
+
+#pragma mark - Dump
+/**
+ Dumps various pieces of information from the system's commpage.
+
+ This function reads and prints information such as the commpage signature,
+ CPU capabilities, and other system-related information directly from the
+ commpage memory area.
+
+ The output is printed to the standard output.
+ */
+// Simplified reading functions
+#define READ_COMM_PAGE_VALUE(type, address) (*((type *)(address)))
+
+void dump_comm_page(void) {
+    char *sig = signature();
+    if (sig) {
+        printf("[*] COMM_PAGE_SIGNATURE: %s\n", sig);
+        free(sig);
+    } else {
+        printf("[*] COMM_PAGE_SIGNATURE: Error reading signature.\n");
+    }
+
+    // Utilizing macro for simplified reading
+    printf("[*] COMM_PAGE_VERSION: %d\n", READ_COMM_PAGE_VALUE(uint16_t, COMM_PAGE64_BASE_ADDRESS + 0x01E));
+    printf("[*] COMM_PAGE_NCPUS: %d\n", READ_COMM_PAGE_VALUE(uint8_t, COMM_PAGE64_BASE_ADDRESS + 0x022));
+    // Other comm page details omitted for brevity
+
+    printf("[*] COMM_PAGE_CPU_CAPABILITIES64:\n");
+    uint64_t cpu_caps = READ_COMM_PAGE_VALUE(uint64_t, COMM_PAGE_CPU_CAPABILITIES64);
+    for (int i = 0, shift = 0; i < (int)(sizeof(cpu_cap_strings) / sizeof(char *)); i++) {
+        if (i == 16) { // Special handling for NumCPUs
+            printf("\t%s: %d\n", cpu_cap_strings[i], (int)(cpu_caps >> 16) & 0xFF);
+            shift = 24; // Skip to the next relevant bit
+            continue;
+        }
+        printf("\t%s: %s\n", cpu_cap_strings[i], (cpu_caps & (1ULL << shift)) ? "true" : "false");
+        shift++;
+    }
+    printf("[*] Done dumping comm page.\n");
+}
+
 
 #pragma mark - Utility Function Prototypes
 
@@ -936,6 +1014,7 @@ int main(int argc, const char * argv[]) {
         }
 
         processImage(image, permutation);
+        dump_comm_page();
         NSLog(@"End of Run...");
     }
 
@@ -1364,7 +1443,7 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
 
         NSLog(@"Modified UIImage created and saved successfully in both PNG and JPEG formats.");
     }
-
+    
     CGContextRelease(ctx);
     free(rawData);
 }
