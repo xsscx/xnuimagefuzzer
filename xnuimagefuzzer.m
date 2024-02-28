@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.8
+ *  @version 1.1.9
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
- *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage, Device Details
+ *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage, Device Details, os.log implementation
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -49,6 +49,8 @@ image processing, UI interaction, and basic C operations essential for the appli
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <os/log.h>
+#import <os/signpost.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -651,6 +653,7 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
         }
     }
 }
+
 
 #pragma mark - LogRandomPixelData
 
@@ -2316,28 +2319,36 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
     CGContextRelease(ctx); // Release the bitmap context
 }
 
-#pragma mark - createBitmapContext32BitFloat4Component
+#pragma mark - Bitmap Context Creation with os_signpost Logging
+
+// Define a log object for os_signpost
+static os_log_t createBitmapContextLog;
 
 /**
-@brief Creates a bitmap context for HDR image processing with 32-bit floating-point components.
-@details This function establishes a bitmap graphics context designed for high dynamic range (HDR) image processing, utilizing 32-bit floating-point precision for each component in the RGBA color model. It's tailored for advanced image manipulation tasks requiring extended dynamic range and precision, such as color grading or exposure adjustments. The context supports complex algorithms and "enhanced fuzzing logic" for dynamic image manipulation, including the iteration over various fuzzing strategies represented by predefined strings.
-
-@param cgImg The `CGImageRef` representing the source image for HDR processing, requiring that the image is not null.
-
-### Process:
-1. **Context Initialization**: Sets up a bitmap context optimized for 32-bit floating-point components in the RGBA model, catering to high-fidelity image data.
-2. **Image Processing Preparation**: Draws the source CGImage into the newly created context, preparing it for subsequent high-precision manipulation.
-3. **Enhanced Fuzzing Logic**: Applies complex algorithms and controlled perturbations to the image data, utilizing predefined strings to illustrate various fuzzing strategies or parameters.
-4. **CGImage Generation**: Generates a new CGImage from the context, encapsulating the advanced manipulations and precision adjustments made to the original image.
-5. **Image Saving**: Saves the processed image with a unique identifier, completing the workflow from HDR image manipulation to storage.
-6. **Resource Management**: Ensures efficient cleanup and release of the bitmap context and other allocated resources to maintain system efficiency.
-
-### Usage Example:
-```objective-c
-// Assuming cgImg is a valid CGImageRef
-createBitmapContext32BitFloat4Component(cgImg);
+ Creates a bitmap graphics context optimized for 32-bit floating-point components, utilizing os_signpost for performance measurement.
+ 
+ @discussion This function establishes a high-precision bitmap graphics context suitable for HDR (High Dynamic Range) image processing. It utilizes 32-bit floating-point precision for each component (RGBA), offering advanced capabilities for color grading, exposure adjustments, and detailed image manipulation. Performance logging with os_signpost aids in performance analysis and optimization, providing insights into execution time and potential bottlenecks.
+ 
+ @param cgImg A CGImageRef representing the source image. Must not be NULL.
+ 
+ Example Usage:
+ @code
+ CGImageRef sourceImage = // Obtain your source image
+ createBitmapContext32BitFloat4Component(sourceImage);
+ @endcode
+ 
+ @note The "cx.src.xnuimagefuzzer" identifier should be replaced with your actual reverse DNS to avoid logging conflicts.
 */
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
+    static dispatch_once_t onceToken;
+    static os_log_t createBitmapContextLog;
+    dispatch_once(&onceToken, ^{
+        createBitmapContextLog = os_log_create("cx.srd.xnuimagefuzzer", "CreateBitmapContext");
+    });
+
+    os_signpost_id_t spid = os_signpost_id_generate(createBitmapContextLog);
+    os_signpost_event_emit(createBitmapContextLog, spid, "Start creating bitmap context");
+
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
         return;
@@ -2347,7 +2358,6 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    // Considering 16 bytes per pixel (4 components: RGBA, each with 32-bit float)
     size_t bytesPerRow = width * 4 * sizeof(float);
 
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -2358,7 +2368,7 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents;
     CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 32, bytesPerRow, colorSpace, bitmapInfo);
-    CGColorSpaceRelease(colorSpace); // Release the color space as it's no longer needed
+    CGColorSpaceRelease(colorSpace);
 
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with 32-bit float, 4-component settings");
@@ -2368,22 +2378,21 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
 
     NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
-
-    // Cycle through injection strings or select based on specific criteria
-    static int currentStringIndex = 0; // Example: simple cycling mechanism
+    // Placeholder for enhanced fuzzing logic application. Implement this function based on your fuzzing requirements.
     applyEnhancedFuzzingToBitmapContextWithFloats((float*)CGBitmapContextGetData(ctx), width, height, YES);
-    currentStringIndex = (currentStringIndex + 1) % NUMBER_OF_STRINGS; // Move to the next string for the next call
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
     if (!newCgImg) {
         NSLog(@"Failed to create CGImage from context");
     } else {
         UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
-        CGImageRelease(newCgImg); // Release the created CGImage
-
+        CGImageRelease(newCgImg);
+        // Placeholder for saving the fuzzed image. Implement this function to save your image as needed.
         saveFuzzedImage(newImage, @"32bit_float4");
         NSLog(@"Modified UIImage with 32-bit float, 4-component settings created and saved successfully.");
     }
 
-    CGContextRelease(ctx); // Release the context to free up resources
+    CGContextRelease(ctx);
+
+    os_signpost_event_emit(createBitmapContextLog, spid, "Finished creating bitmap context");
 }
