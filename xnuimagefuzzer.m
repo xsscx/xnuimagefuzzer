@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.7
+ *  @version 1.1.8
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -41,10 +41,10 @@
 /**
 @brief Core and external libraries necessary for the fuzzer functionality.
 
-@details Includes the necessary headers for the Foundation framework, UIKit, Core Graphics,
+@details This section includes the necessary headers for the Foundation framework, UIKit, Core Graphics,
 standard input/output, standard library, memory management, mathematical functions,
-Boolean type, floating-point limits, and string functions. These are included to support
-image processing, UI interaction, and basic C operations.
+Boolean type, floating-point limits, and string functions. These libraries support
+image processing, UI interaction, and basic C operations essential for the application.
 */
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
@@ -64,28 +64,29 @@ image processing, UI interaction, and basic C operations.
 /**
 @brief Defines constants for general application configuration.
 
-@details Constants include:
-- `ALL`: A special flag used to indicate an operation applies to all items or states.
-- `MAX_PERMUTATION`: Defines the maximum number of permutations in image processing.
-- `COMM_PAGE64_BASE_ADDRESS`: The base address of the comm page.
-- `COMM_PAGE_CPU_CAPABILITIES64`: Address offset for CPU capabilities.
+@details This section outlines constants critical for the application's configuration, including:
+- `ALL`: Indicates operations applicable to all items or states.
+- `MAX_PERMUTATION`: Sets the maximum number of permutations for image processing tasks.
+- `COMM_PAGE64_BASE_ADDRESS` and `COMM_PAGE_CPU_CAPABILITIES64`: Specify memory addresses for CPU capabilities.
 */
-#define ALL -1 // Indicates an operation applies to all items or states.
-#define MAX_PERMUTATION 12 // Max number of permutations in image processing.
+#define ALL -1 // Special flag for operations applicable to all items or states.
+#define MAX_PERMUTATION 12 // Maximum permutations in image processing.
 #define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
 #define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
 
-// Color definitions for console output
+#pragma mark - Color Definitions
+
+// Color definitions for enhanced console output readability
 #define _XOPEN_SOURCE
-#define MAG(string)  "\x1b[0;35m" string "\x1b[0m"
-#define BLUE(string) "\x1b[34m" string "\x1b[0m"
-#define RED(string)  "\x1b[31m" string "\x1b[0m"
-#define WHT(string)  "\x1b[0;37m" string "\x1b[0m"
-#define GRN(string)  "\x1b[0;32m" string "\x1b[0m"
-#define YEL(string)  "\x1b[0;33m" string "\x1b[0m"
-#define CYN(string)  "\x1b[0;36m" string "\x1b[0m"
-#define HWHT(string) "\x1b[0;97m" string "\x1b[0m"
-#define NORMAL_COLOR(string) "\x1B[0m" string "\x1b[0m"
+#define MAG(string)  "\x1b[0;35m" string RESET_COLOR
+#define BLUE(string) "\x1b[34m" string RESET_COLOR
+#define RED(string)  "\x1b[31m" string RESET_COLOR
+#define WHT(string)  "\x1b[0;37m" string RESET_COLOR
+#define GRN(string)  "\x1b[0;32m" string RESET_COLOR
+#define YEL(string)  "\x1b[0;33m" string RESET_COLOR
+#define CYN(string)  "\x1b[0;36m" string RESET_COLOR
+#define HWHT(string) "\x1b[0;97m" string RESET_COLOR
+#define NORMAL_COLOR(string) "\x1B[0m" string RESET_COLOR
 #define RESET_COLOR "\x1b[0m"
 
 #pragma mark - Injection Strings Configuration
@@ -93,18 +94,18 @@ image processing, UI interaction, and basic C operations.
 /**
 @brief Configuration of strings for security testing.
 
-@details Defines injection strings used for security testing, including identification tags,
-URL handling checks, SQL injection simulations, and XSS vulnerability testing.
-NUMBER_OF_STRINGS indicates the total count of these configured strings.
+@details Defines a set of injection strings utilized for security testing purposes, including:
+- Tags for image identification.
+- Simulations of URL handling, SQL injection, and XSS vulnerability tests.
+`NUMBER_OF_STRINGS` indicates the total count of configured strings.
 */
-// Strings for security testing and behavior monitoring
-#define INJECT_STRING_1 "XNU Image Fuzzer" // Tag images processed for identification.
-#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // Check for unintended URL handling.
-#define INJECT_STRING_3 "drop tables" // Simulate a basic SQL injection for security testing.
-#define INJECT_STRING_4 "console.log(domain)" // Attempt to trigger JavaScript execution for XSS vulnerability testing.
-#define NUMBER_OF_STRINGS 4 // The count of injection strings available for use.
+#define INJECT_STRING_1 "XNU Image Fuzzer" // Tag for image identification.
+#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // URL handling test.
+#define INJECT_STRING_3 "DROP TABLES;" // SQL injection simulation.
+#define INJECT_STRING_4 "console.log('domain');" // XSS vulnerability testing.
+#define NUMBER_OF_STRINGS 4 // Total injection strings count.
 
-// Array of injection strings for easy iteration and application in tests.
+// Array for easy iteration and application of injection strings in tests.
 char* injectStrings[NUMBER_OF_STRINGS] = {
     INJECT_STRING_1,
     INJECT_STRING_2,
@@ -115,11 +116,15 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 #pragma mark - Debugging Macros
 
 /**
-@brief Macros for debugging purposes.
+@brief Debugging macros for enhanced logging and assertions.
 
-@details Provides macros for logging and assertions within debug builds. DebugLog enables
-detailed logging with file and line information. AssertWithMessage allows for assertions with
-custom messages, improving error diagnosis.
+@details
+- `DebugLog`: Logs detailed debug information including the function name and line number. Only enabled in DEBUG builds to avoid leaking sensitive information in release builds.
+- `AssertWithMessage`: Performs assertions with custom messages, facilitating easier diagnosis of failures.
+
+Usage:
+- Use `DebugLog` for logging debug information that needs to include context such as the function name and line number.
+- Use `AssertWithMessage` to assert conditions, which will log a custom message upon failure.
 */
 #ifdef DEBUG
 #define DebugLog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__);
@@ -138,24 +143,21 @@ custom messages, improving error diagnosis.
 #pragma mark - Global Variables
 
 /**
-@brief Controls verbose logging throughout the application.
+@brief Toggle for verbose logging within the application.
 
-@details This global variable, when set to 1, enables detailed logging across the fuzzer.
-It aids in debugging and provides insights into the fuzzer's operations.
+@details When set to 1, enables verbose logging across various components of the fuzzer,
+providing detailed insights into operations and aiding significantly in debugging processes.
 */
-static int verboseLogging = 1; // Enable detailed logging: 1 for yes, 0 for no
+static int verboseLogging = 1; // 1 enables detailed logging, 0 disables it.
 
 #pragma mark - Date and Time Utilities
 
 /**
- Formats the current date and time into a human-readable string.
+@brief Formats the current date and time into a standardized, human-readable string.
 
- This utility function creates a formatted string representing the current date and time according to the specified format 'yyyy-MM-dd at HH:mm:ss'. This can be used wherever a standardized representation of the date and time is required.
+@return NSString representing the current date and time, formatted according to 'yyyy-MM-dd at HH:mm:ss'.
 
- @return A string representing the current date and time in the format 'yyyy-MM-dd at HH:mm:ss'.
-
- @discussion The function utilizes `NSDateFormatter` to convert the current date (`NSDate`) into a string. The format used is ISO 8601 for the date with a custom format for the time. This function simplifies the process of getting the current date and time in a formatted manner, abstracting away the details of `NSDateFormatter` configuration.
-
+@discussion Leverages `NSDateFormatter` to generate a string from the current date (`NSDate`), using the specified format. This encapsulates the process of obtaining a formatted current date and time, abstracting the configuration of `NSDateFormatter`.
  Example usage:
  ```objective-c
  NSString *currentDateTimeString = formattedCurrentDateTime();
@@ -169,17 +171,18 @@ NSString* formattedCurrentDateTime(void) {
 }
 
 #pragma mark - Signature
+
 /**
- Reads the system's "commpage" to get the signature.
+@brief Reads the system's "commpage" to get the signature.
 
- This function allocates memory for the signature and copies the signature
- from the COMM_PAGE64_BASE_ADDRESS. The caller is responsible for freeing
- the allocated memory.
+This function allocates memory for the signature and copies it from the COMM_PAGE64_BASE_ADDRESS.
+The caller is responsible for freeing the allocated memory.
 
- - Returns: A pointer to a null-terminated string containing the commpage signature.
-            The caller must free this memory using `free`.
- */
-// Improved signature function with error handling
+@return A pointer to a null-terminated string containing the commpage signature.
+        The caller must free this memory using `free`.
+
+@note Ensure that the memory allocated by this function is freed properly to avoid memory leaks.
+*/
 char *signature(void) {
     char *signature = malloc(0x10 + 1); // +1 for null terminator
     if (!signature) {
@@ -191,34 +194,26 @@ char *signature(void) {
     return signature;
 }
 
-#pragma mark - DumpiDeviceInfo
+#pragma mark - Device Information
 
 /**
- * Gathers and logs detailed device information.
- *
- * This function retrieves various pieces of information about the current device,
- * such as the device's name, model, operating system name and version, and the unique
- * identifier for the vendor. It then logs this information using NSLog.
- *
- * Example output:
- *
- *     Device Information:
- *       Name: iPhone
- *       Model: iPhone
- *       System Name: iOS
- *       System Version: 13.3
- *       Identifier For Vendor: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
- *
- * Note:
- * - The function enables battery monitoring temporarily to fetch the battery level and state.
- * - The `identifierForVendor` represents a unique ID for the app’s vendor on the device.
- *
- * @warning The battery level and state are only available on iOS and iPadOS, and their accuracy
- *          can be affected by various factors.
- *
- * @see `UIDevice` class documentation for more information on the properties used.
- */
-void dumpiDeviceInfo(void) {
+@brief Gathers and logs detailed device information.
+
+Logs various pieces of information about the current device, such as the device's name,
+model, operating system name and version, and the unique identifier for the vendor.
+
+@discussion Utilizes `UIDevice` to fetch and log device properties. Enables battery
+monitoring temporarily to fetch the battery level and state.
+
+@warning The battery level and state are only available on iOS and iPadOS. Their accuracy
+         can be affected by various factors.
+
+@example
+    dumpDeviceInfo();
+
+@see `UIDevice` for more information on the properties used.
+*/
+void dumpDeviceInfo(void) { // Corrected function name typo
     UIDevice *device = [UIDevice currentDevice];
     
     NSLog(@"Device Information:");
@@ -234,81 +229,78 @@ void dumpiDeviceInfo(void) {
     NSLog(@"  Battery State: %ld", (long)device.batteryState);
 }
 
-#pragma mark - dumpMacSysInfo
+#pragma mark - macOS System Information
 
 /**
- * Gathers and logs detailed system information for macOS.
- *
- * Retrieves and logs information about the macOS system on which the application is running.
- * This includes details such as the system's kernel version, hardware model, and CPU type.
- * This function is tailored for macOS environments and utilizes the sysctl interface
- * for accessing system information.
- *
- * Example output:
- *
- *     System Information:
- *       Kernel Version: Darwin 20.3.0
- *       Hardware Model: MacBookPro15,1
- *       CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
- *
- * Note:
- * - This function primarily targets macOS environments and might not be directly
- *   applicable to other platforms without modifications.
- *
- * @see `sysctl` for more information on the system control interface used.
+ Gathers and logs detailed system information for macOS.
+
+ Retrieves and logs information about the macOS system on which the application is running,
+ including details such as the system's kernel version, hardware model, and CPU type. This
+ function utilizes the sysctl interface for accessing system information, tailored for macOS
+ environments.
+
+ Example output:
+     System Information:
+     Kernel Version: Darwin 20.3.0
+     Hardware Model: MacBookPro15,1
+     CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+
+ Note:
+ - This function is designed for macOS environments and may require modifications for other platforms.
+
+ @see `sysctl` for more information on the system control interface used.
  */
 void dumpMacDeviceInfo(void) {
     char str[128];
     size_t size = sizeof(str);
 
     // Kernel Version
-    sysctlbyname("kern.osrelease", &str, &size, NULL, 0);
+    sysctlbyname("kern.osrelease", str, &size, NULL, 0);
     NSLog(@"Kernel Version: %s", str);
 
+    // Reset size for next query
+    size = sizeof(str);
     // Hardware Model
-    sysctlbyname("hw.model", &str, &size, NULL, 0);
+    sysctlbyname("hw.model", str, &size, NULL, 0);
     NSLog(@"Hardware Model: %s", str);
 
+    // Reset size for next query
+    size = sizeof(str);
     // CPU Type
-    sysctlbyname("machdep.cpu.brand_string", &str, &size, NULL, 0);
+    sysctlbyname("machdep.cpu.brand_string", str, &size, NULL, 0);
     NSLog(@"CPU Type: %s", str);
 }
 
-#pragma mark - CPU_CAP
+#pragma mark - CPU Capabilities
 
 /**
  Lists CPU capabilities identifiers.
 
- This array contains string representations of various CPU capabilities
- that can be used to identify the specific features supported by the CPU
- on the current device. These identifiers correspond to specific hardware
- and instruction set features such as MMX, SSE versions, AES encryption support,
- and more advanced capabilities like AVX and SGX.
+ Contains string representations of various CPU capabilities that can be used to identify
+ specific features supported by the CPU on the current device. These identifiers correspond
+ to specific hardware and instruction set features such as MMX, SSE versions, AES encryption
+ support, and more advanced capabilities like AVX and SGX.
 
  Usage:
- - This array is utilized to map CPU capability bits to human-readable strings,
-   facilitating the display or logging of supported CPU features.
+ - Utilized to map CPU capability bits to human-readable strings, aiding in the display or
+   logging of supported CPU features.
 
  Note:
- - The actual determination of which capabilities are supported on the current
-   device requires querying system-specific interfaces or instruction sets.
+ - Determining supported capabilities on the current device requires querying system-specific
+   interfaces or instruction sets.
 
  ## Constants
  - `MMX`: Multimedia Extensions
- - `SSE`: Streaming SIMD Extensions
- - `SSE2` to `SSE4_2`: Successive versions of SSE
+ - `SSE` to `SSE4_2`: Streaming SIMD Extensions and their versions
  - `AES`: Advanced Encryption Standard instruction set
- - `AVX1_0` and `AVX2_0`: Advanced Vector Extensions
- - `BMI1` and `BMI2`: Bit Manipulation Instruction Sets
+ - `AVX1_0`, `AVX2_0`: Advanced Vector Extensions
+ - `BMI1`, `BMI2`: Bit Manipulation Instruction Sets
  - `RTM`: Restricted Transactional Memory
  - `HLE`: Hardware Lock Elision
  - `ADX`: Multi-Precision Add-Carry Instruction Extensions
- - `RDSEED`: The RDSEED instruction
- - `MPX`: Memory Protection Extensions
- - `SGX`: Software Guard Extensions
+ - `RDSEED`, `MPX`, `SGX`: Security and Protection Extensions
 
- @remark The availability of these features depends on the CPU model and the
-         architecture of the device's processor.
+ @remark Availability of these features depends on the CPU model and architecture.
  */
 const char *cpu_cap_strings[] = {
     "MMX", "SSE", "SSE2", "SSE3", "Cache32", "Cache64", "Cache128",
@@ -318,59 +310,66 @@ const char *cpu_cap_strings[] = {
     "RDSEED", "MPX", "SGX"
 };
 
-#pragma mark - DumpCommpage
+#pragma mark - dump_comm_page
+
 /**
- Dumps various pieces of information from the system's commpage.
+@brief Dumps information from the system's commpage.
 
- This function reads and prints information such as the commpage signature,
- CPU capabilities, and other system-related information directly from the
- commpage memory area.
+This function logs details from the commpage, including the signature, CPU capabilities,
+and other system-related data. The information is directly read from the commpage memory area
+and printed to the standard output.
 
- The output is printed to the standard output.
- */
-// Simplified reading functions
+@discussion Utilizes a macro `READ_COMM_PAGE_VALUE` for simplified memory reading, enhancing code readability
+and maintainability. The commpage signature is fetched using the `signature` function, and CPU capabilities
+are iterated based on the `cpu_cap_strings` array.
+
+@note Ensure that the commpage addresses and structures are correctly defined and accessible
+      for the target system.
+*/
 #define READ_COMM_PAGE_VALUE(type, address) (*((type *)(address)))
 
 void dump_comm_page(void) {
     char *sig = signature();
     if (sig) {
-        printf("[*] COMM_PAGE_SIGNATURE: %s\n", sig);
+        NSLog(@"[*] COMM_PAGE_SIGNATURE: %s", sig);
         free(sig);
     } else {
-        printf("[*] COMM_PAGE_SIGNATURE: Error reading signature.\n");
+        NSLog(@"[*] COMM_PAGE_SIGNATURE: Error reading signature.");
     }
 
     // Utilizing macro for simplified reading
-    printf("[*] COMM_PAGE_VERSION: %d\n", READ_COMM_PAGE_VALUE(uint16_t, COMM_PAGE64_BASE_ADDRESS + 0x01E));
-    printf("[*] COMM_PAGE_NCPUS: %d\n", READ_COMM_PAGE_VALUE(uint8_t, COMM_PAGE64_BASE_ADDRESS + 0x022));
-    // Other comm page details omitted for brevity
+    NSLog(@"[*] COMM_PAGE_VERSION: %d", READ_COMM_PAGE_VALUE(uint16_t, COMM_PAGE64_BASE_ADDRESS + 0x01E));
+    NSLog(@"[*] COMM_PAGE_NCPUS: %d", READ_COMM_PAGE_VALUE(uint8_t, COMM_PAGE64_BASE_ADDRESS + 0x022));
+    // Additional comm page details could be added here
 
-    printf("[*] COMM_PAGE_CPU_CAPABILITIES64:\n");
+    NSLog(@"[*] COMM_PAGE_CPU_CAPABILITIES64:");
     uint64_t cpu_caps = READ_COMM_PAGE_VALUE(uint64_t, COMM_PAGE_CPU_CAPABILITIES64);
     for (int i = 0, shift = 0; i < (int)(sizeof(cpu_cap_strings) / sizeof(char *)); i++) {
         if (i == 16) { // Special handling for NumCPUs
-            printf("\t%s: %d\n", cpu_cap_strings[i], (int)(cpu_caps >> 16) & 0xFF);
+            NSLog(@"\t%s: %d", cpu_cap_strings[i], (int)(cpu_caps >> 16) & 0xFF);
             shift = 24; // Skip to the next relevant bit
             continue;
         }
-        printf("\t%s: %s\n", cpu_cap_strings[i], (cpu_caps & (1ULL << shift)) ? "true" : "false");
+        NSLog(@"\t%s: %@", cpu_cap_strings[i], (cpu_caps & (1ULL << shift)) ? @"true" : @"false");
         shift++;
     }
-    printf("[*] Done dumping comm page.\n");
+    NSLog(@"[*] Done dumping comm page.");
 }
 
-
-#pragma mark - printColor Function
+#pragma mark - Print Color Function
 
 /**
 @brief Prints a message in the specified color to the console.
 
-This function wraps the given message in the specified ANSI color code, prints it to the standard output, and then resets the console color to the default. This is useful for distinguishing different types of output or highlighting specific messages.
+This function wraps the given message in the specified ANSI color code, prints it to the
+standard output using NSLog, and then resets the console color to the default. It's particularly
+useful for distinguishing different types of output or highlighting specific messages in the console.
 
 @param color The ANSI color code to use for the message.
 @param message The message to be printed.
 
-@note Ensure that the terminal or console supports ANSI color codes. Otherwise, the color effect might not be displayed as expected.
+@note This function assumes the terminal or console supports ANSI color codes. If not,
+the color effect might not be displayed as expected.
 
 @example
 printColored(RED, "Error: File not found.");
@@ -384,14 +383,24 @@ void printColored(const char* color, const char* message) {
 /**
 @brief Prototypes for utility functions used in image processing.
 
-@details Declares functions for validating image paths, loading images from files,
-processing images with various permutations, and applying different types of noise.
-Also includes utility for creating a unique directory for saving images and hashing strings.
+@details This section declares functions essential for the image processing pipeline,
+ranging from path validation to image manipulation and utility operations. These functions
+facilitate tasks such as validating image paths, loading images from files, applying various
+image processing permutations, and managing output directories and string hashing.
+
+- `isValidImagePath`: Validates the specified image path.
+- `loadImageFromFile`: Loads an image from the given file path.
+- `processImage`: Processes the image with a specified permutation algorithm.
+- Additional utilities include noise application, color inversion, value adjustments, and string hashing.
+
+@return Various return types depending on the function's purpose.
+
+@note Some functions, such as `processImage`, might modify the input image directly.
 */
 BOOL isValidImagePath(NSString *path);
 UIImage *loadImageFromFile(NSString *path);
 void processImage(UIImage *image, int permutation);
-// void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, const char *message);
+// Further prototype declarations for omitted details
 NSString *createUniqueDirectoryForSavingImages(void);
 void addAdditiveNoise(float *pixel);
 void applyMultiplicativeNoise(float *pixel);
@@ -553,14 +562,20 @@ extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
 
 /**
 @brief Creates a unique directory for saving images within the documents directory.
-@details This function generates a unique directory name by combining the current date-time and a random component, ensuring uniqueness. This directory is created within the application's documents directory and is intended for storing processed images. It's especially useful in scenarios where images need to be organized in a manner that avoids naming conflicts and maintains a chronological order. The inclusion of a random component further guarantees that directory names will not collide, even if they're created in rapid succession.
 
-@return The path to the newly created unique directory, or nil if an error occurred. This path can be used directly to save files within the new directory.
+@details Generates a unique directory name by combining the current date-time stamp and a random component,
+ensuring uniqueness. This directory is created within the application's documents directory, intended for
+storing processed images. Useful in scenarios requiring organized storage without naming conflicts, maintaining
+chronological order. The inclusion of a random component further ensures directory name uniqueness, even when
+created in rapid succession.
+
+@return The path to the newly created unique directory, or nil if an error occurred. This path can be used
+directly to save files within the new directory.
 */
 NSString *createUniqueDirectoryForSavingImages(void) {
     // Initialize date formatter for timestamp
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    [formatter setDateFormat:@"yyyy-MM-dd_HH-mm-ss-SSS"];
+    formatter.dateFormat = @"yyyy-MM-dd_HH-mm-ss-SSS";
     
     // Generate unique directory name with current date-time and a random component
     NSString *dateString = [formatter stringFromDate:[NSDate date]];
@@ -576,7 +591,7 @@ NSString *createUniqueDirectoryForSavingImages(void) {
     // Attempt to create the directory
     NSError *error = nil;
     if (![[NSFileManager defaultManager] createDirectoryAtPath:uniqueDirPath withIntermediateDirectories:YES attributes:nil error:&error]) {
-        NSLog(@"Error creating directory for saving images: %@", error);
+        NSLog(@"Error creating directory for saving images: %@", error.localizedDescription);
         return nil; // Return nil in case of failure
     }
 
@@ -584,17 +599,24 @@ NSString *createUniqueDirectoryForSavingImages(void) {
     return uniqueDirPath;
 }
 
+#import <Foundation/Foundation.h>
+
 #pragma mark - Pixel Logging Data
 
 /**
 @brief Logs information about a random set of pixels from an image's raw data.
-@details This function selects a random set of pixels from the provided image data and logs their color components (Red, Green, Blue, Alpha). If verbose logging is enabled, it additionally decodes and logs character data embedded within the pixel values, providing deeper insights into the image's content or the results of image processing operations. This can be particularly useful for debugging or when detailed analysis of specific pixel data is required. The function assumes an RGBA format for pixel data.
+
+@details Selects a random set of pixels from the provided image data and logs their RGBA components.
+If verbose logging is enabled, it decodes and logs character data embedded within the pixel values,
+providing insights into the image's content or image processing results. Assumes RGBA format for pixel data.
 
 @param rawData The raw pixel data of the image.
 @param width The width of the image in pixels.
 @param height The height of the image in pixels.
-@param message A message or identifier to include in the log for context.
-@param verboseLogging If true, logs detailed information including decoded data; if false, performs basic logging.
+@param message A contextual message or identifier for the log.
+@param verboseLogging Enables detailed information logging, including decoded data, when set to true.
+
+@note Ensure the provided raw data correctly corresponds to the specified width and height to avoid out-of-bounds access.
 */
 void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
@@ -602,38 +624,31 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
         return;
     }
 
-    const int numberOfPixelsToLog = 5; // Specifies the number of random pixels to log
+    const int numberOfPixelsToLog = 5; // Number of random pixels to log
 
-    // Verbose logging provides detailed information, including color components and decoded character data
-    if (verboseLogging) {
-        NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
+    NSLog(@"%s - %s logging %d random pixels:", message, verboseLogging ? "Verbose" : "Basic", numberOfPixelsToLog);
 
-        for (int i = 0; i < numberOfPixelsToLog; i++) {
-            unsigned int randomX = arc4random_uniform((unsigned int)width); // Random X coordinate
-            unsigned int randomY = arc4random_uniform((unsigned int)height); // Random Y coordinate
-            size_t pixelIndex = (randomY * width + randomX) * 4; // Calculate index assuming 4 bytes per pixel (RGBA)
+    for (int i = 0; i < numberOfPixelsToLog; i++) {
+        unsigned int randomX = arc4random_uniform((unsigned int)width);
+        unsigned int randomY = arc4random_uniform((unsigned int)height);
+        size_t pixelIndex = (randomY * width + randomX) * 4; // Index for RGBA
 
-            // Check to prevent out-of-bounds access
-            if (pixelIndex + 3 < width * height * 4) {
-                NSLog(@"%s - Pixel[%u, %u]: R=%d, G=%d, B=%d, A=%d",
-                      message, randomX, randomY,
-                      rawData[pixelIndex], rawData[pixelIndex + 1],
-                      rawData[pixelIndex + 2], rawData[pixelIndex + 3]);
+        if (pixelIndex + 3 < width * height * 4) {
+            unsigned char r = rawData[pixelIndex];
+            unsigned char g = rawData[pixelIndex + 1];
+            unsigned char b = rawData[pixelIndex + 2];
+            unsigned char a = rawData[pixelIndex + 3];
 
-                // Optional: Decoding and logging additional data from pixel values
-                unsigned char decodedChar = 0;
-                for (int bit = 0; bit < 3; bit++) {
-                    decodedChar |= (rawData[pixelIndex + bit] & 0x01) << (bit*2); // Decoding embedded data
-                }
-                NSLog(@"%s - Decoded data from Pixel[%u, %u]: %c",
-                      message, randomX, randomY, decodedChar);
-            } else {
-                NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
+            NSLog(@"%s - Pixel[%u, %u]: R=%u, G=%u, B=%u, A=%u", message, randomX, randomY, r, g, b, a);
+
+            if (verboseLogging) {
+                // Decoding embedded character data from pixel values as an example
+                unsigned char decodedChar = (r & 1) | ((g & 1) << 1) | ((b & 1) << 2);
+                NSLog(@"%s - Decoded data from Pixel[%u, %u]: %c", message, randomX, randomY, decodedChar);
             }
+        } else {
+            NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
         }
-    } else {
-        // Basic logging for less detailed analysis
-        NSLog(@"%s - Basic pixel logging executed.", message);
     }
 }
 
@@ -1191,7 +1206,7 @@ int main(int argc, const char * argv[]) {
         // This
         processImage(image, permutation);
         dump_comm_page();
-        dumpiDeviceInfo();
+        dumpDeviceInfo();
         dumpMacDeviceInfo();
 
         NSLog(@"XNU Image Fuzzer Version 1.1.6 ending %@", currentTime);
