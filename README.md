@@ -31,7 +31,7 @@ I am David Hoyt. I was in the Apple Security Research Device Program for 2021 & 
     - -1
 - Run
 
-## Injection Strings Configuration
+### Injection Strings Configuration
 ```
 /**
 @brief Configuration of strings for security testing.
@@ -57,7 +57,7 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 ```
 ### Run Target Jailbroken Device
 #### File Access
-1. If you have an SRD, Jailbroken, arm Device, or Virtual Device, you have access directly to the Fuzzed Files via Container.
+If you have an SRD, Jailbroken, arm Device, or Virtual Device, you have access directly to the Fuzzed Files via Container.
 ```
 Starting up...
 Loading file: seed-small-7.png
@@ -84,8 +84,10 @@ I have Enable File Sharing via Info.plist
 - iTunes File Sharing: Connect your iPhone to a computer, open iTunes, select your device, go to the "File Sharing" section, select your app, and you should see the files listed. You can then save them to your computer.
 
 - Files App: Open the Files app on your iPhone, navigate to the "On My iPhone" section, find your app's folder, and you'll see the saved images. From here, you can select and share files via AirDrop. 
-## At Scale Fuzzing
-You can see the XNU Image Fuzzer Example Code running At Scale using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/xnuimagefuzzer.m]. The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
+
+## Fuzzing on Desktop
+- XNU Image Fuzzer Example Code using the iOS Interposing Code in iOSOnMac [https://github.com/xsscx/macos-research/blob/main/code/iOSOnMac/xnuimagefuzzer.m]. 
+- The iOsOnMac implementation is a more robust method for Fuzzing and Collecting the post-processed Images. 
 
 ### Big Picture
 - XNU Image Fuzzer
