@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.0.9
+ *  @version 1.1.0
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,8 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
- *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern.
+ *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern + Save File types
+ *
  *  @section TODO
  *  - Grayscale Implementation.
  *  - ICC Color Profiles.
@@ -850,15 +851,26 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
         return;
     }
 
+    // Determine the image format and file extension from contextDescription
+    NSString *fileExtension = @"png"; // Default to PNG
+    NSData *imageData;
+    
+    if ([contextDescription containsString:@"jpeg"] || [contextDescription containsString:@"jpg"]) {
+        fileExtension = @"jpg";
+        imageData = UIImageJPEGRepresentation(image, 0.9); // Using a JPEG quality factor of 0.9
+    } else {
+        // Default case handles PNG and other unspecified formats as PNG
+        imageData = UIImagePNGRepresentation(image);
+    }
+
     // Generate file name based on the context description
-    NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@.png", contextDescription];
+    NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@.%@", contextDescription, fileExtension];
     
     // Fetch the documents directory path
     NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
     NSString *filePath = [documentsDirectory stringByAppendingPathComponent:fileName];
     
-    // Convert UIImage to PNG data
-    NSData *imageData = UIImagePNGRepresentation(image);
+    // Save the image data to the file
     BOOL success = [imageData writeToFile:filePath atomically:YES];
     
     if (success) {
@@ -1315,14 +1327,28 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
     applyEnhancedFuzzingToBitmapContext(rawData, width, height, YES);
 
-    // Check for 0x41 pattern after operations
+    // Initialize a variable to keep track of unchanged and changed bytes
+    size_t unchangedCount = 0;
+    size_t changedCount = 0;
+
+    // Check for 0x41 pattern after operations and detect changes
     for (size_t i = 0; i < height * bytesPerRow; i++) {
         if (rawData[i] == 0x41) {
-            NSLog(@"Detected unchanged 0x41 pattern at byte offset %zu", i);
-            // Break or continue based on your use case
-            // break; // Uncomment if you want to stop at the first detection
+            unchangedCount++;
+        } else {
+            // Log the first few changes to avoid flooding the log
+            if (changedCount < 10) { // Limiting to the first 10 changes for brevity
+                NSLog(@"Detected change from 0x41 at byte offset %zu, new value: 0x%X", i, rawData[i]);
+            }
+            changedCount++;
         }
     }
+
+    // Summarize findings
+    if (unchangedCount > 0) {
+        NSLog(@"Detected unchanged 0x41 pattern in %zu places.", unchangedCount);
+    }
+    NSLog(@"Detected changes in %zu places.", changedCount);
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
     if (!newCgImg) {
@@ -1331,10 +1357,12 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
         UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
         CGImageRelease(newCgImg);
 
+        // Save the image in both PNG and JPEG formats
+        // The contextDescription now should indicate the desired format
+        saveFuzzedImage(newImage, @"premultiplied_first_alpha_png");
+        saveFuzzedImage(newImage, @"premultiplied_first_alpha_jpeg");
 
-        saveFuzzedImage(newImage, @"premultiplied_first_alpha");
-
-        NSLog(@"Modified UIImage created and saved successfully.");
+        NSLog(@"Modified UIImage created and saved successfully in both PNG and JPEG formats.");
     }
 
     CGContextRelease(ctx);
@@ -1354,7 +1382,6 @@ The procedure includes validating the CGImageRef, memory allocation for pixel da
 @note
 - Emphasizes meticulous memory management to prevent leaks, including the release of the bitmap context and allocated pixel data.
 - Incorporates diagnostic logging at various stages to support debugging and ensure processing accuracy.
-- Suggests the use of a hypothetical `debugMemoryHandling` function through commented-out calls, indicating a proactive approach to monitoring memory usage.
 
 ### Process:
 1. **Validation**: Ensures the `CGImageRef` is non-null and valid for processing.
@@ -1374,9 +1401,6 @@ createBitmapContextNonPremultipliedAlpha(cgImg);
 void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with Non-Premultiplied Alpha settings");
 
-    // Pre-operation memory diagnostic
-//    debugMemoryHandling();
-
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
         return;
@@ -1390,7 +1414,6 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-//        debugMemoryHandling(); // Post-failure diagnostic
         return;
     }
 
@@ -1399,7 +1422,6 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-//        debugMemoryHandling(); // Diagnostic before early exit
         return;
     }
 
@@ -1411,7 +1433,6 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-//        debugMemoryHandling(); // Diagnostic if context creation fails
         return;
     }
 
@@ -1439,7 +1460,6 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     // Cleanup
     CGContextRelease(ctx);
     free(rawData);
-//    debugMemoryHandling(); // Post-operation diagnostic
 }
 
 #pragma mark - createBitmapContext16BitDepth
