@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.4
+ *  @version 1.1.6
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
- *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage
+ *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage, Device Details
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -39,11 +39,11 @@
 #pragma mark - Headers
 
 /**
-@brief Includes core and external libraries necessary for the fuzzer functionality.
+@brief Core and external libraries necessary for the fuzzer functionality.
 
-@details Necessary headers for Foundation framework, UI Kit, Core Graphics,
+@details Includes the necessary headers for the Foundation framework, UIKit, Core Graphics,
 standard input/output, standard library, memory management, mathematical functions,
-Boolean type, floating-point limits, and string functions are included to support
+Boolean type, floating-point limits, and string functions. These are included to support
 image processing, UI interaction, and basic C operations.
 */
 #import <Foundation/Foundation.h>
@@ -59,20 +59,34 @@ image processing, UI interaction, and basic C operations.
 #include <stdint.h>
 #include <sys/sysctl.h>
 
-
 #pragma mark - Constants
 
 /**
 @brief Defines constants for general application configuration.
 
-@details This section includes constants such as ALL, which is used to indicate
-an operation applies to all items or states, and MAX_PERMUTATION, defining the maximum
-number of permutations in image processing. Define COMM_PAGE Address + Capabilities
+@details Constants include:
+- `ALL`: A special flag used to indicate an operation applies to all items or states.
+- `MAX_PERMUTATION`: Defines the maximum number of permutations in image processing.
+- `COMM_PAGE64_BASE_ADDRESS`: The base address of the comm page.
+- `COMM_PAGE_CPU_CAPABILITIES64`: Address offset for CPU capabilities.
 */
-#define ALL -1 // A special flag used to indicate an operation applies to all items or states.
-#define MAX_PERMUTATION 12 // The maximum number of permutations or variations to be applied in image processing.
+#define ALL -1 // Indicates an operation applies to all items or states.
+#define MAX_PERMUTATION 12 // Max number of permutations in image processing.
 #define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
 #define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
+
+// Color definitions for console output
+#define _XOPEN_SOURCE
+#define MAG(string)  "\x1b[0;35m" string "\x1b[0m"
+#define BLUE(string) "\x1b[34m" string "\x1b[0m"
+#define RED(string)  "\x1b[31m" string "\x1b[0m"
+#define WHT(string)  "\x1b[0;37m" string "\x1b[0m"
+#define GRN(string)  "\x1b[0;32m" string "\x1b[0m"
+#define YEL(string)  "\x1b[0;33m" string "\x1b[0m"
+#define CYN(string)  "\x1b[0;36m" string "\x1b[0m"
+#define HWHT(string) "\x1b[0;97m" string "\x1b[0m"
+#define NORMAL_COLOR(string) "\x1B[0m" string "\x1b[0m"
+#define RESET_COLOR "\x1b[0m"
 
 #pragma mark - Injection Strings Configuration
 
@@ -131,55 +145,28 @@ It aids in debugging and provides insights into the fuzzer's operations.
 */
 static int verboseLogging = 1; // Enable detailed logging: 1 for yes, 0 for no
 
-#pragma mark - dumpMacSysInfo
+#pragma mark - Date and Time Utilities
 
 /**
- * Gathers and logs detailed system information for macOS.
- *
- * Retrieves and logs information about the macOS system on which the application is running.
- * This includes details such as the system's kernel version, hardware model, and CPU type.
- * This function is tailored for macOS environments and utilizes the sysctl interface
- * for accessing system information.
- *
- * Example output:
- *
- *     System Information:
- *       Kernel Version: Darwin 20.3.0
- *       Hardware Model: MacBookPro15,1
- *       CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
- *
- * Note:
- * - This function primarily targets macOS environments and might not be directly
- *   applicable to other platforms without modifications.
- *
- * @see `sysctl` for more information on the system control interface used.
- */
-void dumpMacDeviceInfo(void) {
-    char str[128];
-    size_t size = sizeof(str);
+ Formats the current date and time into a human-readable string.
 
-    // Kernel Version
-    sysctlbyname("kern.osrelease", &str, &size, NULL, 0);
-    NSLog(@"Kernel Version: %s", str);
+ This utility function creates a formatted string representing the current date and time according to the specified format 'yyyy-MM-dd at HH:mm:ss'. This can be used wherever a standardized representation of the date and time is required.
 
-    // Hardware Model
-    sysctlbyname("hw.model", &str, &size, NULL, 0);
-    NSLog(@"Hardware Model: %s", str);
+ @return A string representing the current date and time in the format 'yyyy-MM-dd at HH:mm:ss'.
 
-    // CPU Type
-    sysctlbyname("machdep.cpu.brand_string", &str, &size, NULL, 0);
-    NSLog(@"CPU Type: %s", str);
+ @discussion The function utilizes `NSDateFormatter` to convert the current date (`NSDate`) into a string. The format used is ISO 8601 for the date with a custom format for the time. This function simplifies the process of getting the current date and time in a formatted manner, abstracting away the details of `NSDateFormatter` configuration.
+
+ Example usage:
+ ```objective-c
+ NSString *currentDateTimeString = formattedCurrentDateTime();
+ NSLog(@"Current Date and Time: %@", currentDateTimeString);
+*/
+
+NSString* formattedCurrentDateTime(void) {
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    [formatter setDateFormat:@"yyyy-MM-dd 'at' HH:mm:ss"];
+    return [formatter stringFromDate:[NSDate date]];
 }
-
-#pragma mark - CPU_CAP
-
-const char *cpu_cap_strings[] = {
-    "MMX", "SSE", "SSE2", "SSE3", "Cache32", "Cache64", "Cache128",
-    "FastThreadLocalStorage", "SupplementalSSE3", "64Bit", "SSE4_1", "SSE4_2",
-    "AES", "InOrderPipeline", "Slow", "UP", "NumCPUs", "AVX1_0", "RDRAND",
-    "F16C", "ENFSTRG", "FMA", "AVX2_0", "BMI1", "BMI2", "RTM", "HLE", "ADX",
-    "RDSEED", "MPX", "SGX"
-};
 
 #pragma mark - Signature
 /**
@@ -203,7 +190,6 @@ char *signature(void) {
     signature[0x10] = '\0'; // Ensure null termination
     return signature;
 }
-
 
 #pragma mark - DumpiDeviceInfo
 
@@ -248,6 +234,90 @@ void dumpiDeviceInfo(void) {
     NSLog(@"  Battery State: %ld", (long)device.batteryState);
 }
 
+#pragma mark - dumpMacSysInfo
+
+/**
+ * Gathers and logs detailed system information for macOS.
+ *
+ * Retrieves and logs information about the macOS system on which the application is running.
+ * This includes details such as the system's kernel version, hardware model, and CPU type.
+ * This function is tailored for macOS environments and utilizes the sysctl interface
+ * for accessing system information.
+ *
+ * Example output:
+ *
+ *     System Information:
+ *       Kernel Version: Darwin 20.3.0
+ *       Hardware Model: MacBookPro15,1
+ *       CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+ *
+ * Note:
+ * - This function primarily targets macOS environments and might not be directly
+ *   applicable to other platforms without modifications.
+ *
+ * @see `sysctl` for more information on the system control interface used.
+ */
+void dumpMacDeviceInfo(void) {
+    char str[128];
+    size_t size = sizeof(str);
+
+    // Kernel Version
+    sysctlbyname("kern.osrelease", &str, &size, NULL, 0);
+    NSLog(@"Kernel Version: %s", str);
+
+    // Hardware Model
+    sysctlbyname("hw.model", &str, &size, NULL, 0);
+    NSLog(@"Hardware Model: %s", str);
+
+    // CPU Type
+    sysctlbyname("machdep.cpu.brand_string", &str, &size, NULL, 0);
+    NSLog(@"CPU Type: %s", str);
+}
+
+#pragma mark - CPU_CAP
+
+/**
+ Lists CPU capabilities identifiers.
+
+ This array contains string representations of various CPU capabilities
+ that can be used to identify the specific features supported by the CPU
+ on the current device. These identifiers correspond to specific hardware
+ and instruction set features such as MMX, SSE versions, AES encryption support,
+ and more advanced capabilities like AVX and SGX.
+
+ Usage:
+ - This array is utilized to map CPU capability bits to human-readable strings,
+   facilitating the display or logging of supported CPU features.
+
+ Note:
+ - The actual determination of which capabilities are supported on the current
+   device requires querying system-specific interfaces or instruction sets.
+
+ ## Constants
+ - `MMX`: Multimedia Extensions
+ - `SSE`: Streaming SIMD Extensions
+ - `SSE2` to `SSE4_2`: Successive versions of SSE
+ - `AES`: Advanced Encryption Standard instruction set
+ - `AVX1_0` and `AVX2_0`: Advanced Vector Extensions
+ - `BMI1` and `BMI2`: Bit Manipulation Instruction Sets
+ - `RTM`: Restricted Transactional Memory
+ - `HLE`: Hardware Lock Elision
+ - `ADX`: Multi-Precision Add-Carry Instruction Extensions
+ - `RDSEED`: The RDSEED instruction
+ - `MPX`: Memory Protection Extensions
+ - `SGX`: Software Guard Extensions
+
+ @remark The availability of these features depends on the CPU model and the
+         architecture of the device's processor.
+ */
+const char *cpu_cap_strings[] = {
+    "MMX", "SSE", "SSE2", "SSE3", "Cache32", "Cache64", "Cache128",
+    "FastThreadLocalStorage", "SupplementalSSE3", "64Bit", "SSE4_1", "SSE4_2",
+    "AES", "InOrderPipeline", "Slow", "UP", "NumCPUs", "AVX1_0", "RDRAND",
+    "F16C", "ENFSTRG", "FMA", "AVX2_0", "BMI1", "BMI2", "RTM", "HLE", "ADX",
+    "RDSEED", "MPX", "SGX"
+};
+
 #pragma mark - DumpCommpage
 /**
  Dumps various pieces of information from the system's commpage.
@@ -289,6 +359,25 @@ void dump_comm_page(void) {
     printf("[*] Done dumping comm page.\n");
 }
 
+
+#pragma mark - printColor Function
+
+/**
+@brief Prints a message in the specified color to the console.
+
+This function wraps the given message in the specified ANSI color code, prints it to the standard output, and then resets the console color to the default. This is useful for distinguishing different types of output or highlighting specific messages.
+
+@param color The ANSI color code to use for the message.
+@param message The message to be printed.
+
+@note Ensure that the terminal or console supports ANSI color codes. Otherwise, the color effect might not be displayed as expected.
+
+@example
+printColored(RED, "Error: File not found.");
+*/
+void printColored(const char* color, const char* message) {
+    NSLog(@"%s%s%s", color, message, RESET_COLOR);
+}
 
 #pragma mark - Utility Function Prototypes
 
@@ -1068,8 +1157,12 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
 @note Utilizes `@autoreleasepool` for efficient memory management of Objective-C objects created during execution, crucial for command-line applications where manual memory management is necessary. The initial environment variable configurations are primarily for debugging purposes and may need adjustment or removal depending on deployment scenarios. This entry point serves as a practical example of developing command-line utilities in Objective-C, integrating system-level operations with higher-level Objective-C framework functionalities.
 */
 int main(int argc, const char * argv[]) {
-    NSLog(@"Starting up...");
-//    debugMemoryHandling(); // Call the debug function
+
+    // Startup Banner
+    NSString *currentTime = formattedCurrentDateTime();
+    NSLog(@"XNU Image Fuzzer Version starting 1.1.6 %@", currentTime);
+
+    // Set Env
     setenv("CGBITMAP_CONTEXT_LOG_ERRORS", "1", 1);
     setenv("CG_PDF_VERBOSE", "1", 1);
     setenv("CG_CONTEXT_SHOW_BACKTRACE", "1", 1);
@@ -1103,7 +1196,7 @@ int main(int argc, const char * argv[]) {
         dump_comm_page();
         dumpiDeviceInfo();
         dumpMacDeviceInfo();
-        NSLog(@"End of Run...");
+        NSLog(@"XNU Image Fuzzer Version 1.1.6 ending %@", currentTime);
     }
 
     return 0;
