@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.3
+ *  @version 1.1.4
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1102,7 +1102,7 @@ int main(int argc, const char * argv[]) {
         processImage(image, permutation);
         dump_comm_page();
         dumpiDeviceInfo();
-        dumpMacSysInfo();
+        dumpMacDeviceInfo();
         NSLog(@"End of Run...");
     }
 
