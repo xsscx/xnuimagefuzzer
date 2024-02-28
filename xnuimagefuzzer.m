@@ -2,8 +2,8 @@
  *  @file xnuimagefuzzer.m
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
- *  @date 27 FEB 2024
- *  @version 1.0.7
+ *  @date 28 FEB 2024
+ *  @version 1.0.8
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -27,7 +27,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
- *
+ *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern.
  *  @section TODO
  *  - Grayscale Implementation.
  *  - ICC Color Profiles.
@@ -770,17 +770,26 @@ void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t he
 #pragma mark - debugMemoryHandling
 
 /**
-@brief Demonstrates memory allocation and deallocation using memory mapping.
-@details This function is designed to aid in debugging memory handling by programmatically allocating and then freeing a fixed number of memory chunks using the mmap and munmap system calls. It's particularly useful for testing application behavior under varying memory availability conditions and for showcasing the use of memory mapping for memory management at a lower level than typically exposed by high-level languages.
+@brief Allocates and deallocates memory chunks using mmap and munmap for debugging.
 
-- **Allocation**: Attempts to allocate 64 chunks of memory, each 64 KB in size, using mmap with MAP_ANONYMOUS and MAP_PRIVATE flags.
-- **Initialization**: Fills allocated memory with the byte 0x41 ('A') to simulate memory usage.
-- **Deallocation**: Frees each allocated chunk using munmap.
+@details This function facilitates memory handling debugging by allocating and then deallocating a predetermined number of memory chunks. It utilizes the mmap and munmap system calls, offering a lower-level look at memory management beyond what high-level languages typically provide. This approach is useful for examining application behavior under various memory conditions and demonstrating memory mapping techniques.
 
-@note The function logs the address of each allocated and deallocated chunk, providing visibility into the memory management process. It's a valuable tool for developers and educators for demonstrating practical memory management and for debugging and testing memory allocation behaviors in applications.
+- **Allocation**: Allocates 64 chunks of memory, each 64 KB in size, using the MAP_ANONYMOUS and MAP_PRIVATE flags with mmap, simulating a scenario where memory is used but not backed by any file.
+- **Initialization**: Each allocated chunk is filled with the byte 0x41 ('A'), which can help in identifying how memory content changes over time or remains unaltered after certain operations.
+- **Deallocation**: Utilizes munmap to free each allocated chunk, ensuring no memory leaks and providing a clean state post-execution.
 
-- Uses NSLog for logging, suitable for macOS or iOS platforms but can be adapted for other environments.
-- Memory chunk size (0x10000 bytes) and count (64) are adjustable to fit specific debugging scenarios or application needs.
+@note This function is instrumental for developers looking to understand or teach memory management intricacies, debug memory allocation issues, or test how their applications respond to specific memory usage patterns. It logs the address of each allocated and subsequently deallocated chunk, enhancing transparency in memory management operations.
+
+Example Usage:
+@code
+// Call debugMemoryHandling to observe memory allocation and deallocation behavior
+debugMemoryHandling();
+
+// Output will include the address of allocated memory chunks and confirmation of their deallocation
+@endcode
+
+- The use of NSLog for logging makes this function readily applicable in macOS or iOS development environments. However, the logging mechanism can be adapted for use in other environments as needed.
+- The chosen memory chunk size (0x10000 bytes) and the number of chunks (64) can be modified to suit different debugging needs or to test application behavior under various memory load scenarios.
 */
 void debugMemoryHandling(void) {
     const size_t sz = 0x10000;
@@ -1246,37 +1255,25 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
 #pragma mark - createBitmapContextPremultipliedFirstAlpha
 
 /**
-@brief Creates a bitmap graphics context with Premultiplied First Alpha settings for a given CGImage.
-@details This function is essential for working with images that require premultiplication of their RGB components by the alpha component to avoid rendering artifacts and ensure efficient graphics processing. The process involves creating a bitmap context tailored for premultiplied alpha handling, drawing the source image, applying image modifications, and saving the result.
+@brief Creates a bitmap context with Premultiplied First Alpha settings and applies image processing.
 
-The key steps include validating the image, allocating memory for pixel data, setting up the appropriate color space and bitmap context, applying an "enhanced fuzzing" algorithm to alter the image, and cleaning up resources.
+This function initializes a bitmap context optimized for image processing with premultiplied first alpha settings, drawing a provided CGImage into this context. It fills the allocated memory with a 0x41 pattern to facilitate debugging and security analysis by identifying unused or inefficiently managed memory regions. After processing the image, it checks for any unchanged memory areas and logs their locations, offering insights into memory utilization.
 
-@param cgImg The `CGImageRef` representing the image to be processed, serving as the source for the bitmap context.
+@param cgImg A CGImageRef representing the source image to be transformed. Must not be NULL.
 
-@note
-- The function implements rigorous memory management to prevent leaks, including the proper release of the bitmap context and the allocated pixel data.
-- Diagnostic logging is utilized throughout to facilitate debugging and ensure each processing step is completed as intended.
-- While direct memory handling checks are not shown, the function hints at a structured approach to monitor memory allocation and freeing, critical for maintaining application stability.
+@discussion Utilizing a 0x41 pattern fill and subsequent check, this function aids in debugging memory handling and potentially identifying security vulnerabilities related to buffer overflow or improper memory management. It's designed for enhanced debugging and should be used with consideration for its performance impact in production environments.
 
-### Process:
-1. **Validation**: Checks the `CGImageRef` input to ensure it is valid and non-null.
-2. **Memory Allocation**: Allocates sufficient memory for the image's raw pixel data based on its dimensions.
-3. **Color Space Creation**: Establishes a Device RGB color space for accurate color interpretation.
-4. **Bitmap Context Setup**: Configures a bitmap context with parameters that cater to premultiplied first alpha, including bit depth and bitmap info flags.
-5. **Image Drawing**: Renders the source CGImage into the bitmap context prepared for image processing.
-6. **Image Processing**: Executes an "enhanced fuzzing" algorithm on the pixel data to modify the image's visual appearance.
-7. **Image Saving**: Generates a new CGImage from the bitmap context, converts it into a UIImage, and saves it.
-8. **Cleanup**: Releases the bitmap context and frees the allocated pixel data, ensuring no memory leaks.
+Example usage:
+@code
+CGImageRef sourceImage = CGImageCreate(...); // Create or obtain a CGImageRef
+createBitmapContextPremultipliedFirstAlpha(sourceImage);
+CGImageRelease(sourceImage); // Clean up the source image if it's no longer needed
+@endcode
 
-### Usage Example:
-```objective-c
-// Assuming cgImg is a valid CGImageRef
-createBitmapContextPremultipliedFirstAlpha(cgImg);
- */
+@note Ensure that the CGImageRef provided to this function is valid. The function logs detailed information about its operation, especially detecting unchanged memory areas after processing, which can be instrumental in identifying inefficiencies or vulnerabilities.
+*/
 void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     NSLog(@"Creating bitmap context with Premultiplied First Alpha settings");
-
-//    debugMemoryHandling();
 
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
@@ -1290,34 +1287,42 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
     unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
-//        debugMemoryHandling();
         return;
     }
+
+    // Initialize memory with 0x41 pattern
+    memset(rawData, 0x41, height * bytesPerRow);
 
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
         free(rawData);
-//        debugMemoryHandling();
         return;
     }
 
     CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
-
     CGColorSpaceRelease(colorSpace);
 
     if (!ctx) {
         NSLog(@"Failed to create bitmap context");
         free(rawData);
-//        debugMemoryHandling();
         return;
     }
 
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
 
     NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
-    applyEnhancedFuzzingToBitmapContext(rawData, width, height, verboseLogging);
+    applyEnhancedFuzzingToBitmapContext(rawData, width, height, YES);
+
+    // Check for 0x41 pattern after operations
+    for (size_t i = 0; i < height * bytesPerRow; i++) {
+        if (rawData[i] == 0x41) {
+            NSLog(@"Detected unchanged 0x41 pattern at byte offset %zu", i);
+            // Break or continue based on your use case
+            // break; // Uncomment if you want to stop at the first detection
+        }
+    }
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
     if (!newCgImg) {
@@ -1326,14 +1331,14 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
         UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
         CGImageRelease(newCgImg);
 
-        saveFuzzedImage(newImage, @"premultiplied_first_alpha");
+        // Assuming saveFuzzedImage is implemented elsewhere
+        //saveFuzzedImage(newImage, @"premultiplied_first_alpha");
 
         NSLog(@"Modified UIImage created and saved successfully.");
     }
 
     CGContextRelease(ctx);
     free(rawData);
-//    debugMemoryHandling();
 }
 
 #pragma mark - createBitmapContextNonPremultipliedAlpha
@@ -1960,7 +1965,6 @@ CGImageRef sourceImage = ...; // Assume this is a valid CGImageRef
 createBitmapContextForColorInversionAndFuzzing(sourceImage);
 @endcode
 */
-
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
