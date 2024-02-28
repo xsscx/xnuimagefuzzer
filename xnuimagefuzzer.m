@@ -1942,27 +1942,25 @@ void createBitmapContextLittleEndian(CGImageRef cgImg) {
 #pragma mark - createBitmapContext8BitInvertedColors
 
 /**
- * Creates and manipulates a bitmap graphics context specifically for processing a given CGImageRef
- * to invert its colors and apply an 8-bit color depth format. This function is designed to transform
- * the image's color representation by inverting the RGB values of each pixel, while preserving the alpha channel
- * untouched, and further applies an "enhanced fuzzing logic" to the modified pixel data. The inversion process
- * converts each color component to its complementary color, creating a visual negative of the original image.
- * This method can be particularly useful for creating visual effects, enhancing the contrast for certain image
- * processing applications, or testing the robustness of image processing algorithms.
- *
- * The function sets up a bitmap context with parameters tailored for the inversion effect, including the use
- * of a specific byte order and alpha channel handling. It iterates over the raw pixel data to invert the colors
- * manually and calls an external routine for enhanced fuzzing, indicating a customization point for additional
- * pixel manipulation. The process culminates in the creation of a new CGImage from the context, encapsulating
- * all modifications, and the saving of this new image with an appropriate identifier.
- *
- * Resource management practices are observed to ensure the efficient use of memory, with explicit release
- * calls for allocated objects. The function's reliance on external methods for fuzzing and saving the image
- * necessitates their implementation elsewhere within the application's codebase.
- *
- * @param cgImg A CGImageRef representing the source image to be transformed. The parameter must not be NULL.
- *
- */
+@brief Transforms the color representation of an image by inverting its colors and applying an 8-bit color depth.
+
+@discussion This function is designed for manipulating a bitmap graphics context to invert the RGB values of each pixel in a given CGImageRef, while keeping the alpha channel unchanged. It applies an "enhanced fuzzing logic" to the modified pixel data, making it suitable for creating visual negatives, enhancing image contrast, or evaluating the robustness of image processing algorithms. The color inversion process creates complementary colors for each pixel, offering a straightforward method for achieving visual effects or testing.
+
+The setup includes configuring a bitmap context optimized for color inversion and specifying byte order and alpha channel handling. It involves iterating over raw pixel data for manual color inversion and integrating enhanced fuzzing routines for further pixel manipulation. The function concludes by generating a new CGImage that encapsulates all modifications, which is then saved with a unique identifier.
+
+Resource management is a key aspect, ensuring efficient memory use and necessitating the implementation of fuzzing and saving routines elsewhere within the application's codebase.
+
+@param cgImg The CGImageRef representing the source image to be transformed. This parameter must not be NULL to ensure proper function execution.
+
+@note Utilizing this function requires careful consideration of the source image's format and the intended outcome, particularly in terms of color depth and the specific effects of the enhanced fuzzing logic. The reliance on external methods for the fuzzing process and saving the modified image highlights the need for a comprehensive approach to image processing within the application.
+
+Example Usage:
+@code
+CGImageRef sourceImage = ...; // Assume this is a valid CGImageRef
+createBitmapContextForColorInversionAndFuzzing(sourceImage);
+@endcode
+*/
+
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
     if (!cgImg) {
         NSLog(@"Invalid CGImageRef provided.");
