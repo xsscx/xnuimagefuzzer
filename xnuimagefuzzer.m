@@ -1245,8 +1245,6 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
 
 #pragma mark - createBitmapContextPremultipliedFirstAlpha
 
-#pragma mark - createBitmapContextPremultipliedFirstAlpha
-
 /**
 @brief Creates a bitmap graphics context with Premultiplied First Alpha settings for a given CGImage.
 @details This function is essential for working with images that require premultiplication of their RGB components by the alpha component to avoid rendering artifacts and ensure efficient graphics processing. The process involves creating a bitmap context tailored for premultiplied alpha handling, drawing the source image, applying image modifications, and saving the result.
