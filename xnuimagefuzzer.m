@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.2
+ *  @version 1.1.3
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -57,6 +57,8 @@ image processing, UI interaction, and basic C operations.
 #include <float.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/sysctl.h>
+
 
 #pragma mark - Constants
 
@@ -65,7 +67,7 @@ image processing, UI interaction, and basic C operations.
 
 @details This section includes constants such as ALL, which is used to indicate
 an operation applies to all items or states, and MAX_PERMUTATION, defining the maximum
-number of permutations in image processing.
+number of permutations in image processing. Define COMM_PAGE Address + Capabilities
 */
 #define ALL -1 // A special flag used to indicate an operation applies to all items or states.
 #define MAX_PERMUTATION 12 // The maximum number of permutations or variations to be applied in image processing.
@@ -128,6 +130,46 @@ custom messages, improving error diagnosis.
 It aids in debugging and provides insights into the fuzzer's operations.
 */
 static int verboseLogging = 1; // Enable detailed logging: 1 for yes, 0 for no
+
+#pragma mark - dumpMacSysInfo
+
+/**
+ * Gathers and logs detailed system information for macOS.
+ *
+ * Retrieves and logs information about the macOS system on which the application is running.
+ * This includes details such as the system's kernel version, hardware model, and CPU type.
+ * This function is tailored for macOS environments and utilizes the sysctl interface
+ * for accessing system information.
+ *
+ * Example output:
+ *
+ *     System Information:
+ *       Kernel Version: Darwin 20.3.0
+ *       Hardware Model: MacBookPro15,1
+ *       CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+ *
+ * Note:
+ * - This function primarily targets macOS environments and might not be directly
+ *   applicable to other platforms without modifications.
+ *
+ * @see `sysctl` for more information on the system control interface used.
+ */
+void dumpMacDeviceInfo(void) {
+    char str[128];
+    size_t size = sizeof(str);
+
+    // Kernel Version
+    sysctlbyname("kern.osrelease", &str, &size, NULL, 0);
+    NSLog(@"Kernel Version: %s", str);
+
+    // Hardware Model
+    sysctlbyname("hw.model", &str, &size, NULL, 0);
+    NSLog(@"Hardware Model: %s", str);
+
+    // CPU Type
+    sysctlbyname("machdep.cpu.brand_string", &str, &size, NULL, 0);
+    NSLog(@"CPU Type: %s", str);
+}
 
 #pragma mark - CPU_CAP
 
@@ -1060,6 +1102,7 @@ int main(int argc, const char * argv[]) {
         processImage(image, permutation);
         dump_comm_page();
         dumpiDeviceInfo();
+        dumpMacSysInfo();
         NSLog(@"End of Run...");
     }
 
