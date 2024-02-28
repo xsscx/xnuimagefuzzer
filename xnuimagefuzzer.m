@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.1.6
+ *  @version 1.1.7
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1136,66 +1136,64 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
 #pragma mark - Application Entry Point
 
 /**
-@brief Entry point of the application, handling initialization, argument parsing, and image processing.
-@details This function sets up the application environment, parses command-line arguments to load and process an image, and manages resources efficiently. It's structured to demonstrate a command-line utility pattern in Objective-C, leveraging both C and Objective-C elements for comprehensive image processing tasks.
+ @brief Entry point of the application, handling initialization, argument parsing, and image processing.
 
-- **Environment Variables Setup**: Configures environment variables for detailed logging and debugging across various components of the application, aiding in the diagnosis of memory management, bitmap context, and other framework-related issues.
+ @details Sets up the application environment, parses command-line arguments for image loading and processing,
+ and manages resources efficiently. Demonstrates a command-line utility pattern in Objective-C, integrating
+ C and Objective-C elements for image processing tasks.
 
-- **Command-Line Arguments**:
-  - Validates the number of arguments, expecting at least three: executable name, image name, and permutation number.
-  - Parses the image name and permutation number from the arguments for further processing.
+ - Environment Variables Setup: Configures variables for detailed logging and debugging.
+ - Command-Line Arguments: Validates and parses arguments for image processing.
+ - Image Processing: Loads and processes the specified image.
 
-- **Image Processing**:
-  - Loads the specified image using the parsed name.
-  - Applies the processing algorithm dictated by the parsed permutation number through `processImage`.
+ @param argc Count of command-line arguments.
+ @param argv Array of command-line arguments.
+ @return Returns 0 on success, 1 on failure.
 
-@param argc Count of command-line arguments.
-@param argv Array of command-line arguments.
-
-@return Returns 0 on successful execution, highlighting a successful image load and processing. Returns 1 if the image fails to load or if insufficient arguments are provided, indicating a failure in execution.
-
-@note Utilizes `@autoreleasepool` for efficient memory management of Objective-C objects created during execution, crucial for command-line applications where manual memory management is necessary. The initial environment variable configurations are primarily for debugging purposes and may need adjustment or removal depending on deployment scenarios. This entry point serves as a practical example of developing command-line utilities in Objective-C, integrating system-level operations with higher-level Objective-C framework functionalities.
-*/
+ @note Utilizes @autoreleasepool for efficient memory management. The initial environment variable configurations
+ are for debugging and may need adjustment depending on deployment.
+ */
 int main(int argc, const char * argv[]) {
-
-    // Startup Banner
-    NSString *currentTime = formattedCurrentDateTime();
-    NSLog(@"XNU Image Fuzzer Version starting 1.1.6 %@", currentTime);
-
-    // Set Env
-    setenv("CGBITMAP_CONTEXT_LOG_ERRORS", "1", 1);
-    setenv("CG_PDF_VERBOSE", "1", 1);
-    setenv("CG_CONTEXT_SHOW_BACKTRACE", "1", 1);
-    setenv("CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR", "1", 1);
-    setenv("CG_IMAGE_SHOW_MALLOC", "1", 1);
-    setenv("CG_LAYER_SHOW_BACKTRACE", "1", 1);
-    setenv("CGBITMAP_CONTEXT_LOG", "1", 1);
-    setenv("CGCOLORDATAPROVIDER_VERBOSE", "1", 1);
-    setenv("CGPDF_LOG_PAGES", "1", 1);
-    setenv("MALLOC_CHECK_", "1", 1);
-    setenv("NSZombieEnabled", "YES", 1);
-    setenv("NSAssertsEnabled", "YES", 1);
-    setenv("NSShowAllViews", "YES", 1);
-    setenv("IDELogRedirectionPolicy", "oslogToStdio", 1);
     @autoreleasepool {
-        if (argc < 3) {
-            NSLog(@"Usage: %s image_name permutation_number", argv[0]);
-            return 0;
+        NSString *currentTime = formattedCurrentDateTime();
+        NSLog(@"XNU Image Fuzzer Version 1.1.6 starting %@", currentTime);
+
+        // Environment Variables for Debugging
+        const char *envVars[] = {
+            "CGBITMAP_CONTEXT_LOG_ERRORS", "CG_PDF_VERBOSE", "CG_CONTEXT_SHOW_BACKTRACE",
+            "CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR", "CG_IMAGE_SHOW_MALLOC", "CG_LAYER_SHOW_BACKTRACE",
+            "CGBITMAP_CONTEXT_LOG", "CGCOLORDATAPROVIDER_VERBOSE", "CGPDF_LOG_PAGES",
+            "MALLOC_CHECK_", "NSZombieEnabled", "NSAssertsEnabled", "NSShowAllViews",
+            "IDELogRedirectionPolicy"
+        };
+        const char *envValues[] = {
+            "1", "1", "1", "1", "1", "1", "1", "1", "1", "1", "YES", "YES", "YES", "oslogToStdio"
+        };
+        for (int i = 0; i < sizeof(envVars) / sizeof(envVars[0]); i++) {
+            setenv(envVars[i], envValues[i], 1);
         }
 
-        NSString* imageName = [NSString stringWithUTF8String:argv[1]];
+        if (argc < 3) {
+            NSLog(@"Usage: %s image_name permutation_number", argv[0]);
+            return 1; // Corrected to return 1 to indicate error on insufficient arguments
+        }
+
+        NSString *imageName = [NSString stringWithUTF8String:argv[1]];
         int permutation = atoi(argv[2]);
 
+        // Assume loadImageFromFile and processImage are defined elsewhere
         UIImage *image = loadImageFromFile(imageName);
         if (!image) {
             NSLog(@"Failed to load image: %@", imageName);
             return 1;
         }
 
+        // This
         processImage(image, permutation);
         dump_comm_page();
         dumpiDeviceInfo();
         dumpMacDeviceInfo();
+
         NSLog(@"XNU Image Fuzzer Version 1.1.6 ending %@", currentTime);
     }
 
