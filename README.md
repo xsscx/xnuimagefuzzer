@@ -31,6 +31,30 @@ I am David Hoyt. I was in the Apple Security Research Device Program for 2021 & 
     - -1
 - Run
 
+## Injection Strings Configuration
+```
+/**
+@brief Configuration of strings for security testing.
+
+@details Defines injection strings used for security testing, including identification tags,
+URL handling checks, SQL injection simulations, and XSS vulnerability testing.
+NUMBER_OF_STRINGS indicates the total count of these configured strings.
+*/
+// Strings for security testing and behavior monitoring
+#define INJECT_STRING_1 "XNU Image Fuzzer" // Tag images processed for identification.
+#define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // Check for unintended URL handling.
+#define INJECT_STRING_3 "drop tables" // Simulate a basic SQL injection for security testing.
+#define INJECT_STRING_4 "console.log(domain)" // Attempt to trigger JavaScript execution for XSS vulnerability testing.
+#define NUMBER_OF_STRINGS 4 // The count of injection strings available for use.
+
+// Array of injection strings for easy iteration and application in tests.
+char* injectStrings[NUMBER_OF_STRINGS] = {
+    INJECT_STRING_1,
+    INJECT_STRING_2,
+    INJECT_STRING_3,
+    INJECT_STRING_4
+};
+```
 ### Run Target Jailbroken Device
 #### File Access
 1. If you have a Jailbroken or Virtual Device, you have access directly to the Fuzzed Files.
