@@ -238,4 +238,27 @@ Device Information:
 Kernel Version: 23.3.0
 Hardware Model: 23.3.0
 CPU Type: 23.3.0
+Directory contents at /var/mobile/Containers/Data/Application/.../Documents: (
+    "fuzzed_image_Big_Endian.png",
+    "fuzzed_image_premultiplied_first_alpha_jpeg.jpg",
+    "fuzzed_image_8Bit_InvertedColors.png",
+    "fuzzed_image_hdr_float.png",
+    "fuzzed_image_16bit_depth.png",
+    "fuzzed_image_32bit_float4.png",
+    "fuzzed_image_standard_rgb.png",
+    "fuzzed_image_non_premultiplied_alpha.png",
+    "fuzzed_image_Little_Endian.png",
+    "fuzzed_image_premultiplied_first_alpha_png.png"
+)
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_Big_Endian.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_premultiplied_first_alpha_jpeg.jpg
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_8Bit_InvertedColors.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_hdr_float.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_16bit_depth.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_32bit_float4.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_standard_rgb.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_non_premultiplied_alpha.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_Little_Endian.png
+Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_premultiplied_first_alpha_png.png
+Loaded 10 images in total
 ```
