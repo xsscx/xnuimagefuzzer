@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.2.0
+ *  @version 1.2.1
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -66,19 +66,53 @@ image processing, UI interaction, and basic C operations essential for the appli
 /**
 @brief Defines constants for general application configuration.
 
-@details This section outlines constants critical for the application's configuration, including:
-- `ALL`: Indicates operations applicable to all items or states.
-- `MAX_PERMUTATION`: Sets the maximum number of permutations for image processing tasks.
-- `COMM_PAGE64_BASE_ADDRESS` and `COMM_PAGE_CPU_CAPABILITIES64`: Specify memory addresses for CPU capabilities.
+This section includes definitions for constants used throughout the application to control its behavior and configuration. These constants are pivotal for ensuring the application operates within defined parameters and accesses system resources correctly.
+
+- `ALL`: A special flag used to indicate an operation applies to all items or states. Useful for functions that require a broad application of their logic.
+- `MAX_PERMUTATION`: Defines the upper limit on the number of permutations that can be applied in image processing tasks. This constant helps in preventing excessive processing time and resource consumption.
+- `COMM_PAGE64_BASE_ADDRESS`: The base memory address for the comm page, which is a reserved area of memory used by the system to store variables that are accessed frequently.
+- `COMM_PAGE_CPU_CAPABILITIES64`: An offset from `COMM_PAGE64_BASE_ADDRESS` that points to the CPU capabilities. Useful for quickly determining the hardware capabilities of the system.
+
+Example usage:
+```objective-c
+if (operationMode == ALL) {
+    // Apply operation to all items
+}
+
+int permutations = MAX_PERMUTATION;
+uint64_t commPageAddress = COMM_PAGE64_BASE_ADDRESS;
+uint64_t cpuCapabilitiesAddress = COMM_PAGE_CPU_CAPABILITIES64;
+Note: These constants are designed to be used across various components of the application, providing a centralized point of reference for important values and system parameters.
 */
 #define ALL -1 // Special flag for operations applicable to all items or states.
 #define MAX_PERMUTATION 12 // Maximum permutations in image processing.
-#define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
-#define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
+#define COMM_PAGE64_BASE_ADDRESS (0x0000000FFFFFC000ULL)
+#define COMM_PAGE_CPU_CAPABILITIES64 (COMM_PAGE64_BASE_ADDRESS + 0x010)
 
 #pragma mark - Color Definitions
 
-// Color definitions for enhanced console output readability
+/**
+@brief Provides ANSI color codes for enhancing console output readability.
+
+@details Use these definitions to add color to console logs, improving the distinction between different types of messages. Each macro wraps a given string with the ANSI code for a specific color and automatically resets the color to default after the string. This ensures that only the intended text is colored, without affecting subsequent console output.
+
+- `MAG(string)`: Magenta colored text.
+- `BLUE(string)`: Blue colored text.
+- `RED(string)`: Red colored text for errors or warnings.
+- `WHT(string)`: White colored text.
+- `GRN(string)`: Green colored text for success messages.
+- `YEL(string)`: Yellow colored text for cautionary messages.
+- `CYN(string)`: Cyan colored text for informational messages.
+- `HWHT(string)`: High-intensity white colored text.
+- `NORMAL_COLOR(string)`: Resets text color to default console color.
+- `RESET_COLOR`: ANSI code to reset text color to default.
+
+Example usage:
+```objective-c
+NSLog(@"%@", RED("Error: Invalid input"));
+NSLog(@"%@", GRN("Operation completed successfully"));
+Note: The effectiveness and appearance of these color codes can vary based on the terminal or console application used. Ensure your development and deployment environments support ANSI color codes.
+*/
 #define _XOPEN_SOURCE
 #define MAG(string)  "\x1b[0;35m" string RESET_COLOR
 #define BLUE(string) "\x1b[34m" string RESET_COLOR
@@ -94,12 +128,25 @@ image processing, UI interaction, and basic C operations essential for the appli
 #pragma mark - Injection Strings Configuration
 
 /**
-@brief Configuration of strings for security testing.
+@brief Configures strings for security testing within the application.
 
-@details Defines a set of injection strings utilized for security testing purposes, including:
-- Tags for image identification.
-- Simulations of URL handling, SQL injection, and XSS vulnerability tests.
-`NUMBER_OF_STRINGS` indicates the total count of configured strings.
+This configuration outlines a series of predefined strings that are used across the application to test for various security vulnerabilities, ensuring robustness and security. The strings are designed to simulate common attack vectors, including SQL injection, Cross-Site Scripting (XSS), and issues with URL handling.
+
+- `INJECT_STRING_1`: Utilized as a tag for identifying images processed by the application. This can help in tracking how images are manipulated or stored.
+- `INJECT_STRING_2`: Tests the application's handling of URLs, potentially uncovering issues with how external links are processed or validated.
+- `INJECT_STRING_3`: Simulates an SQL injection attack, which can help identify vulnerabilities in database interactions where unescaped strings are used in SQL queries.
+- `INJECT_STRING_4`: Aims to test for Cross-Site Scripting (XSS) vulnerabilities by injecting JavaScript code. Successful execution of this string in an unsanitized context could indicate a security flaw.
+
+`NUMBER_OF_STRINGS`: Represents the total number of injection strings defined for use in security testing, facilitating iteration and application in various testing scenarios.
+
+Example usage:
+```objective-c
+for (int i = 0; i < NUMBER_OF_STRINGS; i++) {
+    NSLog(@"Testing with injection string: %s", injectStrings[i]);
+    // Function call to test the application's handling of the injection string
+    testApplicationWithInjectionString(injectStrings[i]);
+}
+Note: These strings are designed for use in a controlled testing environment. They are tools for verifying the application's security mechanisms and should be handled with care to avoid unintended consequences.
 */
 #define INJECT_STRING_1 "XNU Image Fuzzer" // Tag for image identification.
 #define INJECT_STRING_2 "https://xss.cx?xnuimagefuzzer" // URL handling test.
@@ -118,15 +165,20 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
 #pragma mark - Debugging Macros
 
 /**
-@brief Debugging macros for enhanced logging and assertions.
+@brief Provides macros for enhanced logging and assertions during development.
 
-@details
-- `DebugLog`: Logs detailed debug information including the function name and line number. Only enabled in DEBUG builds to avoid leaking sensitive information in release builds.
-- `AssertWithMessage`: Performs assertions with custom messages, facilitating easier diagnosis of failures.
+This section defines two key macros designed to assist in the debugging process, ensuring that developers can log detailed information and perform assertions with customized messages. These macros are especially useful in DEBUG builds, where additional context can significantly aid in diagnosing issues.
 
-Usage:
-- Use `DebugLog` for logging debug information that needs to include context such as the function name and line number.
-- Use `AssertWithMessage` to assert conditions, which will log a custom message upon failure.
+## Features:
+- `DebugLog`: This macro is used for logging detailed debug information, including the name of the current function and the line number from where it's called. It's instrumental in tracing the execution flow or pinpointing the location of specific events or states in the code.
+- `AssertWithMessage`: This macro allows for the execution of assertions that, upon failure, log a custom message. It's valuable for validating assumptions within the code and providing immediate feedback if those assumptions are violated.
+
+## Usage:
+
+### DebugLog
+Use the `DebugLog` macro to log messages with additional context, such as the function name and line number. This macro is only active in DEBUG builds, helping to avoid the potential exposure of sensitive information in release builds.
+```objective-c
+DebugLog(@"An informative debug message with context.");
 */
 #ifdef DEBUG
 #define DebugLog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__);
@@ -145,10 +197,27 @@ Usage:
 #pragma mark - Global Variables
 
 /**
-@brief Toggle for verbose logging within the application.
+@brief Controls the verbosity of logging throughout the application.
 
-@details When set to 1, enables verbose logging across various components of the fuzzer,
-providing detailed insights into operations and aiding significantly in debugging processes.
+This global variable acts as a switch to toggle verbose logging on or off across the application's various components. Verbose logging is crucial for debugging, as it provides detailed insights into the application's operations, including function calls, process flows, and data management.
+
+## Features:
+- When set to `1`, verbose logging is enabled. This setting is ideal for development and debugging phases, where understanding the intricate details of application behavior is necessary.
+- Setting this variable to `0` disables verbose logging, which is recommended for release builds to reduce overhead and prevent the exposure of potentially sensitive information.
+
+## Usage:
+
+To enable verbose logging throughout the application, ensure this variable is set to `1`. This can typically be done at the application's initialization phase or dynamically adjusted based on certain conditions or user input.
+
+Example:
+```objective-c
+verboseLogging = 1; // Enable verbose logging
+Conversely, to disable verbose logging, especially in preparation for a release build, set the variable to 0:
+
+objective
+Copy code
+verboseLogging = 0; // Disable verbose logging
+@note It's important to manage the state of this variable carefully, as excessive logging can lead to performance degradation and cluttered log outputs. Consider implementing a mechanism to adjust this setting dynamically based on the build configuration or user preferences.
 */
 static int verboseLogging = 1; // 1 enables detailed logging, 0 disables it.
 
@@ -175,15 +244,24 @@ NSString* formattedCurrentDateTime(void) {
 #pragma mark - Signature
 
 /**
-@brief Reads the system's "commpage" to get the signature.
+@brief Fetches the system's commpage signature.
 
-This function allocates memory for the signature and copies it from the COMM_PAGE64_BASE_ADDRESS.
-The caller is responsible for freeing the allocated memory.
+This function is designed to read a specific segment of the system's commpage, often used to retrieve system or hardware-specific signatures. It dynamically allocates memory to store the signature, which is then copied from a predefined memory address (`COMM_PAGE64_BASE_ADDRESS`).
 
-@return A pointer to a null-terminated string containing the commpage signature.
-        The caller must free this memory using `free`.
+@return A dynamically allocated, null-terminated string containing the commpage signature. It is the caller's responsibility to free this memory using `free` to avoid memory leaks.
 
-@note Ensure that the memory allocated by this function is freed properly to avoid memory leaks.
+@discussion The function allocates an extra byte to the required signature length (`0x10`) to accommodate the null terminator, ensuring the returned string is properly formatted for use in C and Objective-C contexts. Proper error handling is implemented to return `NULL` if memory allocation fails, allowing callers to safely handle error scenarios.
+
+Example usage:
+```objective-c
+char *systemSignature = signature();
+if (systemSignature != NULL) {
+    NSLog(@"System Signature: %s", systemSignature);
+    free(systemSignature);
+} else {
+    NSLog(@"Failed to obtain system signature.");
+}
+@note Care must be taken to ensure that the memory allocated for the signature string is freed after use. Failure to do so will result in memory leaks. This function assumes that the caller is familiar with dynamic memory management in C.
 */
 char *signature(void) {
     char *signature = malloc(0x10 + 1); // +1 for null terminator
@@ -199,111 +277,132 @@ char *signature(void) {
 #pragma mark - Device Information
 
 /**
-@brief Gathers and logs detailed device information.
+@brief Logs comprehensive information about the current device.
 
-Logs various pieces of information about the current device, such as the device's name,
-model, operating system name and version, and the unique identifier for the vendor.
+This utility function leverages the `UIDevice` class to access and log a wide range of information about the device on which the application is running. It covers basic device identifiers, operating system details, and battery status, providing a holistic view of the device's configuration and state.
 
-@discussion Utilizes `UIDevice` to fetch and log device properties. Enables battery
-monitoring temporarily to fetch the battery level and state.
+@discussion The function temporarily enables battery monitoring to retrieve the current battery level and state, supplementing the device information with power status. This could be particularly useful for applications that need to adjust their behavior or performance based on the device's power status.
 
-@warning The battery level and state are only available on iOS and iPadOS. Their accuracy
-         can be affected by various factors.
+@warning Battery information is specific to iOS and iPadOS devices and might not reflect real-time changes accurately due to system optimizations and power management.
 
-@example
-    dumpDeviceInfo();
+@example Usage:
+```objective-c
+dumpDeviceInfo();
+This example demonstrates how to call dumpDeviceInfo to log device information. This can be particularly useful during development and debugging to understand the environment in which the application is operating.
 
-@see `UIDevice` for more information on the properties used.
+@note Ensure that you check the device's capability to provide battery information and handle any potential inaccuracies in the reported levels and states. Consider the privacy implications of logging and handling the unique identifier for the vendor (identifierForVendor).
+
+@see UIDevice for detailed documentation on accessing device properties.
 */
-void dumpDeviceInfo(void) { // Corrected function name typo
-    UIDevice *device = [UIDevice currentDevice];
-    
-    NSLog(@"Device Information:");
-    NSLog(@"  Name: %@", device.name);
-    NSLog(@"  Model: %@", device.model);
-    NSLog(@"  System Name: %@", device.systemName);
-    NSLog(@"  System Version: %@", device.systemVersion);
-    NSLog(@"  Identifier For Vendor: %@", device.identifierForVendor.UUIDString);
-    
-    // Battery information
-    device.batteryMonitoringEnabled = YES;
-    NSLog(@"  Battery Level: %f", device.batteryLevel);
-    NSLog(@"  Battery State: %ld", (long)device.batteryState);
+void dumpDeviceInfo(void) {
+UIDevice *device = [UIDevice currentDevice];
+NSLog(@"Device Information:");
+NSLog(@"  Name: %@", device.name);
+NSLog(@"  Model: %@", device.model);
+NSLog(@"  System Name: %@", device.systemName);
+NSLog(@"  System Version: %@", device.systemVersion);
+NSLog(@"  Identifier For Vendor: %@", device.identifierForVendor.UUIDString);
+
+device.batteryMonitoringEnabled = YES; // Enable battery monitoring
+NSLog(@"  Battery Level: %f", device.batteryLevel * 100); // Convert to percentage
+NSString *batteryState;
+switch (device.batteryState) {
+    case UIDeviceBatteryStateUnknown:
+        batteryState = @"Unknown";
+        break;
+    case UIDeviceBatteryStateUnplugged:
+        batteryState = @"Unplugged";
+        break;
+    case UIDeviceBatteryStateCharging:
+        batteryState = @"Charging";
+        break;
+    case UIDeviceBatteryStateFull:
+        batteryState = @"Full";
+        break;
+    default:
+        batteryState = @"Not Available";
+        break;
+}
+NSLog(@"  Battery State: %@", batteryState);
+device.batteryMonitoringEnabled = NO; // Disable battery monitoring after fetching information
 }
 
 #pragma mark - macOS System Information
 
 /**
- Gathers and logs detailed system information for macOS.
+@brief Logs crucial system information for macOS devices.
 
- Retrieves and logs information about the macOS system on which the application is running,
- including details such as the system's kernel version, hardware model, and CPU type. This
- function utilizes the sysctl interface for accessing system information, tailored for macOS
- environments.
+This function is specifically designed to fetch and log key pieces of system information for macOS devices, utilizing the `sysctl` interface. It provides insights into the kernel version, hardware model, and CPU type, among others, offering a clear snapshot of the underlying hardware and operating system specifics.
 
- Example output:
-     System Information:
-     Kernel Version: Darwin 20.3.0
-     Hardware Model: MacBookPro15,1
-     CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+## Key Information Retrieved:
+- **Kernel Version**: The version of the Darwin kernel the system is running.
+- **Hardware Model**: The specific model of the macOS device, useful for identifying hardware capabilities.
+- **CPU Type**: Details about the CPU, including its brand and specifications, which can inform performance expectations and compatibility.
 
- Note:
- - This function is designed for macOS environments and may require modifications for other platforms.
+## Usage:
+This function is tailor-made for macOS environments and can be invoked directly to log the system information to the console:
+```objective-c
+dumpMacDeviceInfo();
+Example Output:
+plaintext
+Copy code
+System Information:
+Kernel Version: Darwin 20.3.0
+Hardware Model: MacBookPro15,1
+CPU Type: Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz
+Note:
+While this function is designed with macOS in mind, accessing system information via sysctl is a method that could potentially be adapted for other Unix-like systems with appropriate modifications.
 
- @see `sysctl` for more information on the system control interface used.
- */
+@see For more in-depth details on using sysctl, refer to the man pages (man sysctl) or the official documentation for the sysctl interface.
+*/
 void dumpMacDeviceInfo(void) {
     char str[128];
     size_t size = sizeof(str);
-
-    // Kernel Version
+    
+    // Query and log the kernel version
     sysctlbyname("kern.osrelease", str, &size, NULL, 0);
     NSLog(@"Kernel Version: %s", str);
-
-    // Reset size for next query
+    
+    // Reset size for the next sysctlbyname call
     size = sizeof(str);
-    // Hardware Model
+    // Query and log the hardware model
     sysctlbyname("hw.model", str, &size, NULL, 0);
     NSLog(@"Hardware Model: %s", str);
-
-    // Reset size for next query
+    
+    // Reset size for the next sysctlbyname call
     size = sizeof(str);
-    // CPU Type
+    // Query and log the CPU type
     sysctlbyname("machdep.cpu.brand_string", str, &size, NULL, 0);
     NSLog(@"CPU Type: %s", str);
+    
 }
 
-#pragma mark - CPU Capabilities
+#pragma mark - cpu_cap_strings
 
 /**
- Lists CPU capabilities identifiers.
+@brief Identifies the CPU's supported capabilities.
 
- Contains string representations of various CPU capabilities that can be used to identify
- specific features supported by the CPU on the current device. These identifiers correspond
- to specific hardware and instruction set features such as MMX, SSE versions, AES encryption
- support, and more advanced capabilities like AVX and SGX.
+This section enumerates various CPU capabilities and instruction sets that modern processors might support. These capabilities enhance the processor's performance and security features. Identifiers for these capabilities are used to represent specific hardware features and instruction sets, such as Multimedia Extensions, Streaming SIMD Extensions, Advanced Encryption Standard instruction sets, and others.
 
- Usage:
- - Utilized to map CPU capability bits to human-readable strings, aiding in the display or
-   logging of supported CPU features.
+## Usage:
+The identifiers provided are used to map the CPU capability bits to human-readable strings. This mapping aids developers and system administrators in understanding the features supported by the CPU on a given device, facilitating optimizations and security enhancements.
 
- Note:
- - Determining supported capabilities on the current device requires querying system-specific
-   interfaces or instruction sets.
+## Key Identifiers:
+- `MMX`: Refers to Multimedia Extensions that enhance multimedia and communication tasks.
+- `SSE`, `SSE2`, `SSE3`, `SSE4_1`, `SSE4_2`: Streaming SIMD Extensions and their versions, improving performance on floating point and integer operations.
+- `AES`: Denotes support for the Advanced Encryption Standard instruction set, crucial for fast and secure data encryption.
+- `AVX1_0`, `AVX2_0`: Advanced Vector Extensions that improve performance for applications requiring high computational throughput.
+- `BMI1`, `BMI2`: Bit Manipulation Instruction Sets, enhancing the efficiency of certain data processing tasks.
+- `RTM`: Restricted Transactional Memory, supporting transactional memory synchronization.
+- `HLE`: Hardware Lock Elision, aimed at improving the performance of lock-based concurrent algorithms.
+- `ADX`: Multi-Precision Add-Carry Instruction Extensions, useful in cryptographic algorithms.
+- `RDSEED`, `MPX`, `SGX`: Various security and protection extensions, including random number generation, memory protection, and trusted execution.
 
- ## Constants
- - `MMX`: Multimedia Extensions
- - `SSE` to `SSE4_2`: Streaming SIMD Extensions and their versions
- - `AES`: Advanced Encryption Standard instruction set
- - `AVX1_0`, `AVX2_0`: Advanced Vector Extensions
- - `BMI1`, `BMI2`: Bit Manipulation Instruction Sets
- - `RTM`: Restricted Transactional Memory
- - `HLE`: Hardware Lock Elision
- - `ADX`: Multi-Precision Add-Carry Instruction Extensions
- - `RDSEED`, `MPX`, `SGX`: Security and Protection Extensions
+## Note:
+The availability and support for these capabilities are highly dependent on the CPU model and the architecture of the device's processor. Detection and utilization of these features typically require querying through system-specific interfaces or leveraging instruction sets designed for this purpose.
 
- @remark Availability of these features depends on the CPU model and architecture.
- */
+@see Consult the documentation for your processor or use system utilities designed to query and report CPU capabilities for detailed information on the supported features.
+*/
 const char *cpu_cap_strings[] = {
     "MMX", "SSE", "SSE2", "SSE3", "Cache32", "Cache64", "Cache128",
     "FastThreadLocalStorage", "SupplementalSSE3", "64Bit", "SSE4_1", "SSE4_2",
@@ -315,18 +414,37 @@ const char *cpu_cap_strings[] = {
 #pragma mark - dump_comm_page
 
 /**
-@brief Dumps information from the system's commpage.
+@brief Dumps key communication page details for diagnostic purposes.
 
-This function logs details from the commpage, including the signature, CPU capabilities,
-and other system-related data. The information is directly read from the commpage memory area
-and printed to the standard output.
+This function extracts and logs essential details from the system's communication page, such as the signature, version, and number of CPUs, along with CPU capabilities. It utilizes the `READ_COMM_PAGE_VALUE` macro to read values directly from specified memory addresses, facilitating a low-level inspection of system configurations and capabilities.
 
-@discussion Utilizes a macro `READ_COMM_PAGE_VALUE` for simplified memory reading, enhancing code readability
-and maintainability. The commpage signature is fetched using the `signature` function, and CPU capabilities
-are iterated based on the `cpu_cap_strings` array.
+## Behavior:
+1. Retrieves and logs the communication page signature. If the signature cannot be read, logs an error message.
+2. Logs the communication page version and number of CPU cores by reading from predefined offsets within the communication page.
+3. Enumerates and logs CPU capabilities based on the `COMM_PAGE_CPU_CAPABILITIES64` address. Each capability is checked and logged, indicating whether it is supported.
 
-@note Ensure that the commpage addresses and structures are correctly defined and accessible
-      for the target system.
+## Parameters:
+This function does not take any parameters.
+
+## Return:
+This function does not return a value.
+
+## Example Output:
+- `[*] COMM_PAGE_SIGNATURE: <signature_value>` or `[*] COMM_PAGE_SIGNATURE: Error reading signature.`
+- `[*] COMM_PAGE_VERSION: <version_number>`
+- `[*] COMM_PAGE_NCPUS: <cpu_count>`
+- Lists CPU capabilities as true/false based on the current system's hardware configuration.
+
+## Note:
+- The actual information logged will depend on the specific system and its configuration.
+- The `READ_COMM_PAGE_VALUE` macro is crucial for the function's operation, casting the specified address to the appropriate type before dereferencing.
+
+## See Also:
+- `READ_COMM_PAGE_VALUE` macro for how memory addresses are read.
+- System documentation for the communication page structure and definitions.
+
+Usage:
+Call `dump_comm_page()` to log the communication page details for the current system.
 */
 #define READ_COMM_PAGE_VALUE(type, address) (*((type *)(address)))
 
@@ -361,20 +479,29 @@ void dump_comm_page(void) {
 #pragma mark - Print Color Function
 
 /**
-@brief Prints a message in the specified color to the console.
+@brief Prints a message with specified ANSI color to the console.
 
-This function wraps the given message in the specified ANSI color code, prints it to the
-standard output using NSLog, and then resets the console color to the default. It's particularly
-useful for distinguishing different types of output or highlighting specific messages in the console.
+This utility function enhances console log visibility by allowing messages to be printed in different colors. It wraps a provided message with the specified ANSI color code, ensuring the message stands out in the console output. After printing the message, it resets the console color back to its default, maintaining the terminal's readability for subsequent outputs.
 
-@param color The ANSI color code to use for the message.
-@param message The message to be printed.
+## Parameters:
+- `color`: The ANSI color code that dictates the color of the message. This parameter expects a string representation of ANSI color codes (e.g., "\033[31m" for red).
+- `message`: The text message to be printed. This string is the content that will be displayed in the specified color in the console.
 
-@note This function assumes the terminal or console supports ANSI color codes. If not,
-the color effect might not be displayed as expected.
+## Behavior:
+- The function first applies the specified ANSI color code to the terminal output.
+- It then prints the provided message using `NSLog`, ensuring the message is logged with the specified color.
+- Finally, it resets the console color to the default to prevent affecting the color of subsequent console outputs.
 
-@example
-printColored(RED, "Error: File not found.");
+## Note:
+- This function relies on the terminal or console's support for ANSI color codes. If the terminal does not support these codes, the message will be printed without color formatting, and escape codes may be visible.
+
+## Example Usage:
+```swift
+printColored("\033[31m", "Error: File not found.");
+This example demonstrates how to use the printColored function to print an error message in red, making it more noticeable in the console output.
+
+See Also:
+ANSI color codes documentation for more information on how colors are represented in terminals.
 */
 void printColored(const char* color, const char* message) {
     NSLog(@"%s%s%s", color, message, RESET_COLOR);
@@ -600,8 +727,6 @@ NSString *createUniqueDirectoryForSavingImages(void) {
     // Return the path of the successfully created directory
     return uniqueDirPath;
 }
-
-#import <Foundation/Foundation.h>
 
 #pragma mark - Pixel Logging Data
 
