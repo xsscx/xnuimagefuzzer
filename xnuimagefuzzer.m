@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 28 FEB 2024
- *  @version 1.2.1
+ *  @version 1.2.2
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -20,20 +20,14 @@
  *
  *  @section CHANGES
  *  - 26/11/2023, h02332: Initial commit.
- *  - 27/11/2023, h02332: Removed Grayscale Feature pending Implementation.
- *  - 28/11/2023, h02332: Refactor Code & Fuzzing.
- *  - 29/11/2023, h02332: Refactor Code & Fuzzing & Logging.
- *  - 20/02/2024, h02332: Refactor Code & Fuzzing & Logging.
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
- *  - 27/02/2024, h02332: Refactor Code & Fuzzing & Logging & Injected Strings + Xcode Quick Help Formatting.
  *  - 28/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage, Device Details, os.log implementation
  *
  *  @section TODO
  *  - Grayscale Implementation.
  *  - ICC Color Profiles.
  *  - Refactor Example Fuzzer.
- *  - Add Logging Toggle as global variable - testing in createBitmapContextStandardRGB function.
  */
 
 #pragma mark - Headers
@@ -2462,7 +2456,7 @@ static os_log_t createBitmapContextLog;
  ```objective-c
  CGImageRef sourceImage = [UIImage imageNamed:@"example.png"].CGImage;
  createBitmapContext32BitFloat4Component(sourceImage);
-@note Ensure the source image (cgImg) is valid before passing it to this function. The "cx.src.xnuimagefuzzer" identifier in os_log_create should be replaced with your actual reverse DNS to avoid logging conflicts.
+@note Ensure the source image (cgImg) is valid before passing it to this function. The "cx.srd.xnuimagefuzzer" identifier in os_log_create should be replaced with your actual reverse DNS to avoid logging conflicts.
 */
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     static dispatch_once_t onceToken;
