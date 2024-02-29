@@ -22,7 +22,7 @@
  *  - 26/11/2023, h02332: Initial commit.
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
- *  - 29/02/2024, h02332: Refactor Xcode, Add Placeholders for ViewController Code, Main.storyboard
+ *  - 29/02/2024, h02332: Refactor Xcode Quick Help Formatting, Add Debug Code for Checking Memory Pattern, Dump CommPage, Device Details, os.log implementation
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -1295,7 +1295,7 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
 int main(int argc, const char * argv[]) {
     @autoreleasepool {
         NSString *currentTime = formattedCurrentDateTime();
-        NSLog(@"XNU Image Fuzzer Version 1.1.6 starting %@", currentTime);
+        NSLog(@"XNU Image Fuzzer Version 1.2.4 starting %@", currentTime);
 
         // Environment Variables for Debugging
         const char *envVars[] = {
@@ -1335,7 +1335,7 @@ int main(int argc, const char * argv[]) {
 
         AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
         [appDelegate transitionToFuzzedImagesViewController];
-        NSLog(@"XNU Image Fuzzer Version 1.1.6 ending %@", currentTime);
+        NSLog(@"XNU Image Fuzzer Version 1.2.4 ending %@", currentTime);
         return UIApplicationMain(argc, (char * _Nonnull * _Nonnull)argv, nil, NSStringFromClass([AppDelegate class]));
     
 
@@ -2522,3 +2522,4 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     os_signpost_event_emit(createBitmapContextLog, spid, "Finished creating bitmap context");
 }
+
