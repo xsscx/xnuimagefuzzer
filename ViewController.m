@@ -3,7 +3,7 @@
  *  @brief XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 29 FEB 2024
- *  @version 1.0.3
+ *  @version 1.0.4
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -157,3 +157,4 @@
 }
 
 @end
+
