@@ -3,7 +3,7 @@
  *  @brief XNU Image Fuzzer for iOs On Mac Interposing Project
  *  @author @h02332 | David Hoyt
  *  @date 01 MAR 2024
- *  @version 1.2.9
+ *  @version 1.3.0
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -1329,7 +1329,7 @@ int main(int argc, const char * argv[]) {
             NSLog(@"XNU Image Fuzzer Version 1.2.6 transferring to appDelegate %@", currentTime);
             return 0; // Successful completion of command-line image processing
         }  else {
-             Standard iOS app launch
+            // Standard iOS app launch
              AppDelegate *appDelegate = (AppDelegate *)[[UIApplication sharedApplication] delegate];
              [appDelegate transitionToFuzzedImagesViewController];
              return UIApplicationMain(argc, (char * _Nonnull * _Nonnull)argv, nil, NSStringFromClass([AppDelegate class]));
@@ -2515,3 +2515,4 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
 
     os_signpost_event_emit(createBitmapContextLog, spid, "Finished creating bitmap context");
 }
+
