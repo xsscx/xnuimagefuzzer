@@ -1,6 +1,6 @@
 # XNU Image Fuzzer 
 
-Last Updated: February 28, 2024, 1446 EST
+Last Updated: February 29, 2024, 2107 EST
 
 ## Project summary
 
@@ -152,10 +152,8 @@ Thread 0::  Dispatch queue: com.apple.root.user-interactive-qos
 ```
 
 ## Roadmap
-- Add Rendering via StoryBoard
-  - Display Seed Image
-  - Display Fuzzed Image
-  - Fuzzing Instrumentation
+- Display Seed Image
+- Fuzzing Instrumentation
 - Distributed Fuzzing
   - Pull Seeds
   - Push PoC's
