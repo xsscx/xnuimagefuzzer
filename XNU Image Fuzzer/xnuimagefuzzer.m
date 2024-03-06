@@ -2,8 +2,8 @@
  *  @file xnuimagefuzzer.m
  *  @brief XNU Image Fuzzer for iOS Project
  *  @author @h02332 | David Hoyt
- *  @date 01 MAR 2024
- *  @version 1.3.3
+ *  @date 05 MAR 2024
+ *  @version 1.3.4
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 29/02/2024, h02332: Add appDelegate Transition
- *  - 06/03/2024, h02332: Fix: applyEnhancedFuzzingToBitmapContext()
+ *  - 06/03/2024, h02332: Fix: BOOL not bool
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -616,7 +616,7 @@ void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t he
 @brief Logs pixel data from a bitmap context for analysis or debugging.
 @details Includes an option for verbose output, aiding in the detailed examination of image processing results or issues.
 */
-void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verbose);
+void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, BOOL verbose);
 
 /**
 @brief Applies enhanced fuzzing to a bitmap context's raw pixel data.
@@ -740,7 +740,7 @@ providing insights into the image's content or image processing results. Assumes
 
 @note Ensure the provided raw data correctly corresponds to the specified width and height to avoid out-of-bounds access.
 */
-void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, bool verboseLogging) {
+void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, BOOL verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"%s - Invalid data or dimensions. Logging aborted.", message);
         return;
