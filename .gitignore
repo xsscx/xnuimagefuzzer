@@ -1,4 +1,28 @@
 # Prerequisites
+.DS_Store
+.Trashes
+*.swp
+*.lock
+*~.nib
+DerivedData/
+build/
+Build/
+Debug/
+Release/
+
+# XCode Files
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+xcuserdata/
+xcuserdata/**/xcschemes/*
+*.xccheckout
+
+Pods/
+Podfile.lock
+
 *.d
 
 # Compiled Object files
