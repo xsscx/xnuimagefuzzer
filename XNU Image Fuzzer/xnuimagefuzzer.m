@@ -3,7 +3,7 @@
  *  @brief XNU Image Fuzzer for iOS Project
  *  @author @h02332 | David Hoyt
  *  @date 01 MAR 2024
- *  @version 1.3.2
+ *  @version 1.3.3
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@
  *  - 21/02/2024, h02332: Refactor Fuzzing Contexts for Floats & Alpha, Fix Coverage, Math & Programming Mistakes.
  *  - 21/02/2024, h02332: PermaLink https://srd.cx/xnu-image-fuzzer/.
  *  - 29/02/2024, h02332: Add appDelegate Transition
+ *  - 06/03/2024, h02332: Fix: applyEnhancedFuzzingToBitmapContext()
  *
  *  @section TODO
  *  - Grayscale Implementation.
@@ -211,7 +212,7 @@ Conversely, to disable verbose logging, especially in preparation for a release 
 verboseLogging = 0; // Disable verbose logging
 @note It's important to manage the state of this variable carefully, as excessive logging can lead to performance degradation and cluttered log outputs. Consider implementing a mechanism to adjust this setting dynamically based on the build configuration or user preferences.
 */
-static int verboseLogging = 1; // 1 enables detailed logging, 0 disables it.
+static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
 
 #pragma mark - Date and Time Utilities
 
@@ -621,6 +622,7 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
 @brief Applies enhanced fuzzing to a bitmap context's raw pixel data.
 @details Provides a more aggressive testing approach to uncover potential issues, with a parameter to enable verbose logging for detailed analysis.
 */
+//void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 
 /**
@@ -823,7 +825,7 @@ void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, con
 
 @note The rawData buffer is expected to accommodate width * height pixels, each represented by 4 bytes. The function directly modifies this buffer, reflecting the applied fuzzing techniques without returning any value. It serves as a critical tool for enhancing the security and robustness of image processing algorithms by exposing them to a broad spectrum of test conditions.
 */
-void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, bool verboseLogging) {
+void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verboseLogging) {
     if (!rawData || width == 0 || height == 0) {
         NSLog(@"No valid raw data or dimensions available for enhanced fuzzing.");
         return;
