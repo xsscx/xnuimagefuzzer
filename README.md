@@ -1,6 +1,6 @@
 # XNU Image Fuzzer 
 
-Last Updated: 02 MAR 2024, 1230 EST
+Last Updated: TUE 05 MAR 2024, 1956 EST
 
 ## Project summary
 
@@ -14,16 +14,15 @@ I am David Hoyt and participated in the Apple Security Research Device Program f
 <img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #1" style="height:550px; width:330px;"/> <img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-002.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #2" style="height:550px; width:330px;"/> 
 
 ## Quick Start
-- Create a new iOS Application in Xcode
-- Copy the Source File and Paste into main.m
-- Copy the Flowers.exr, and any Image File Type into your XCode Project
-- Edit the Scheme
+- Open as Xcode Project or Clone
+- Verify the Scheme
   - For Arguments on Launch
     - Flowers.exr, or any Image File Type
     - -1
-- Run
+- Click Run
 
 ### Injection Strings Configuration
+- User Controllable Input for Fuzzing
 ```
 /**
 @brief Configuration of strings for security testing.
