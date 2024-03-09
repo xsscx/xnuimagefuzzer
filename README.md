@@ -17,7 +17,7 @@ I am David Hoyt and participated in the Apple Security Research Device Program f
 - Open as Xcode Project or Clone
 - Verify the Scheme
   - For Arguments on Launch
-    - Flowers.exr, or any Image File Type
+    - 2225.jpg, or any Image File Type
     - -1
 - Click Run
 
