@@ -1,6 +1,6 @@
 # XNU Image Fuzzer 
 
-Last Updated: TUE 06 MAR 2024, 0700 EST
+Last Updated: TUE 10 MAR 2024, 0815 EST
 
 ## Project Summary
 
@@ -61,38 +61,6 @@ char* injectStrings[NUMBER_OF_STRINGS] = {
     INJECT_STRING_4
 };
 */
-```
-
-## Bugs Identified with XNU Image Fuzzer
-- A sample of Bugs found
-
-### CVE 
-- CVE-2023-46602 https://nvd.nist.gov/vuln/detail/CVE-2023-46602
-- CVE-2023-46603 https://nvd.nist.gov/vuln/detail/CVE-2023-46603
-- CVE-2023-46866 https://nvd.nist.gov/vuln/detail/CVE-2023-46866
-- CVE-2023-46867 https://nvd.nist.gov/vuln/detail/CVE-2023-46867
-- CVE-2023-47249 https://nvd.nist.gov/vuln/detail/CVE-2023-47249
-- CVE-2023-48736 https://nvd.nist.gov/vuln/detail/CVE-2023-48736
-
-### DemoIccMax Bug Reports & Pull Requests
-- https://github.com/InternationalColorConsortium/DemoIccMAX/pull/53
-- https://github.com/InternationalColorConsortium/DemoIccMAX/issues/54
-- https://github.com/InternationalColorConsortium/DemoIccMAX/issues/58
-
-### Apple Image dylib Crash Samples
-- libAppleEXR in Function YCCAtoRGBA()
-- AppleJPEG in Function decode_get_chroma_subsampling()
-- MediaToolbox in Function 0x18f3c9000 + 6396752 
-
-### Thanks
-```
-Argyll CMS change log
-Version 3.0.3
--------------
-* Made icc code a little more robust against bad profiles.
-  (Thanks to David Hoyt).
-
-Version 3.0.2  23 October 2023
 ```
 
 ### Run Target Jailbroken Device
@@ -159,10 +127,6 @@ Image path: /private/var/containers/Bundle/Application/.../cx.srd.xnuimagefuzzer
 UIImage created: <UIImage:0x107e0c750 anonymous {784, 734} renderingMode=automatic(original)>, Size: {width: 784.00, height: 734.00}, Scale: 1.000000, Orientation: 0
 CGImage created from UIImage. Dimensions: 784 x 734
 Case: Creating bitmap context with Standard RGB settings
-Chunk @ 0x102de0000
-Chunk @ 0x102df0000
-...
-Successfully unmapped chunk @ 0x10b630000
 ...
 Case: Creating bitmap context with 32-bit float, 4-component settings
 Creating bitmap context with 32-bit float, 4-component settings
@@ -176,56 +140,12 @@ Enhanced fuzzing with injection string 3: drop tables completed
 Starting enhanced fuzzing with injection string 4: console.log(domain)
 Enhanced fuzzing with injection string 4: console.log(domain) completed
 All enhanced fuzzing processes completed.
-Fuzzed image for '32bit_float4' context saved to /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_32bit_float4.png
+...
+Fuzzed image for '32bit_float4' context saved to /Users/xss/Documents/fuzzed_image_32bit_float4.png
 Modified UIImage with 32-bit float, 4-component settings created and saved successfully.
 Completed image processing for permutation 12
-[*] COMM_PAGE_SIGNATURE: commpage 64-bit
-[*] COMM_PAGE_VERSION: 3
-[*] COMM_PAGE_NCPUS: 8
-[*] COMM_PAGE_CPU_CAPABILITIES64:
-	MMX: false
-	SSE: false
-	SSE2: false
-	SSE3: true
-	Cache32: false
-	Cache64: false
-	Cache128: true
-	FastThreadLocalStorage: true
-	SupplementalSSE3: true
-	64Bit: true
-	SSE4_1: true
-	SSE4_2: true
-	AES: true
-	InOrderPipeline: true
-	Slow: true
-	UP: false
-	NumCPUs: 8
-	AVX1_0: true
-	RDRAND: true
-	F16C: true
-	ENFSTRG: false
-	FMA: true
-	AVX2_0: false
-	BMI1: false
-	BMI2: true
-	RTM: true
-	HLE: true
-	ADX: false
-	RDSEED: false
-	MPX: true
-	SGX: true
-[*] Done dumping comm page.
-Device Information:
-  Name: iPad
-  Model: iPad
-  System Name: iPadOS
-  System Version: 17.3
-  Identifier For Vendor: 666-666-666
-  Battery Level: 1.000000
-  Battery State: 3
-Kernel Version: 23.3.0
-Hardware Model: 23.3.0
-CPU Type: 23.3.0
+XNU Image Fuzzer Version ✅ 2024-03-10 at 08:06:38
+...
 Directory contents at /var/mobile/Containers/Data/Application/.../Documents: (
     "fuzzed_image_Big_Endian.png",
     "fuzzed_image_premultiplied_first_alpha_jpeg.jpg",
@@ -250,6 +170,44 @@ Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image
 Loaded image: /var/mobile/Containers/Data/Application/.../Documents/fuzzed_image_premultiplied_first_alpha_png.png
 Loaded 10 images in total
 ```
+
+## Xcode Config - Optional
+- Compress PNG Files Option in Xcode
+ - Verify OFF
+<img src="https://xss.cx/2024/03/10/img/xnuimagefuzzer-xcode-configuration-compress-png-files-no.png" alt="Set Xcode Compress PNG Option to OFF" style="height:161px; width:716px;"/>
+
+## Bugs Identified with XNU Image Fuzzer
+- A sample of Bugs found
+
+### CVE 
+- CVE-2023-46602 https://nvd.nist.gov/vuln/detail/CVE-2023-46602
+- CVE-2023-46603 https://nvd.nist.gov/vuln/detail/CVE-2023-46603
+- CVE-2023-46866 https://nvd.nist.gov/vuln/detail/CVE-2023-46866
+- CVE-2023-46867 https://nvd.nist.gov/vuln/detail/CVE-2023-46867
+- CVE-2023-47249 https://nvd.nist.gov/vuln/detail/CVE-2023-47249
+- CVE-2023-48736 https://nvd.nist.gov/vuln/detail/CVE-2023-48736
+
+### DemoIccMax Bug Reports & Pull Requests
+- https://github.com/InternationalColorConsortium/DemoIccMAX/pull/53
+- https://github.com/InternationalColorConsortium/DemoIccMAX/issues/54
+- https://github.com/InternationalColorConsortium/DemoIccMAX/issues/58
+
+### Apple Image dylib Crash Samples
+- libAppleEXR in Function YCCAtoRGBA()
+- AppleJPEG in Function decode_get_chroma_subsampling()
+- MediaToolbox in Function 0x18f3c9000 + 6396752 
+
+### Thanks
+```
+Argyll CMS change log
+Version 3.0.3
+-------------
+* Made icc code a little more robust against bad profiles.
+  (Thanks to David Hoyt).
+
+Version 3.0.2  23 October 2023
+```
+
 ## Samples
 - Project Zero Bug 2225 Seed <img src="https://xss.cx/2024/02/20/img/2225.png" alt="Seed - P0-2225" style="height:32px; width:32px;"/> Fuzz <img src="https://xss.cx/2024/02/20/img/xnuimagefuzzer-sample-output-pmg-image-rendering-horizontal-presentaion.png" alt="XNU Image Fuzzer Standard RBG #2" style="height:32px; width:352px;"/>
 - Fuzzed RBG #1 <img src="https://xss.cx/2024/02/20/img/fuzzed_image_standard_rgb.png" alt="XNU Image Fuzzer Standard RBG" style="height:32px; width:32px;"/> Fuzzed RBG #2 <img src="https://xss.cx/2024/02/20/img/fuzzed_image_standard_rgb_series2.png" alt="XNU Image Fuzzer Standard RBG #2" style="height:32px; width:32px;"/>
