@@ -2,8 +2,8 @@
  *  @file AppDelegate.h
  *  @brief XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
- *  @date 29 FEB 2024
- *  @version 1.0.0
+ *  @date 10 MAR 2024
+ *  @version 1.0.2
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -21,6 +21,8 @@
  *  @section CHANGES
  *  - 29/02/2024, h02332: Initial commit.
  *
+ *  @section TODO
+ *  
  */
 #pragma mark - Headers
 

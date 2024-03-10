@@ -2,8 +2,8 @@
  *  @file ViewController.m
  *  @brief XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
- *  @date 29 FEB 2024
- *  @version 1.0.4
+ *  @date 10 MAR 2024
+ *  @version 1.0.6
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by

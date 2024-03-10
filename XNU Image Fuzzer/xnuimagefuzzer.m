@@ -2,8 +2,8 @@
  *  @file xnuimagefuzzer.m
  *  @brief XNU Image Fuzzer for iOS Project
  *  @author @h02332 | David Hoyt
- *  @date 05 MAR 2024
- *  @version 1.3.4
+ *  @date 10 MAR 2024
+ *  @version 1.3.7
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@
  *  - Grayscale Implementation.
  *  - ICC Color Profiles.
  *  - Refactor Example Fuzzer.
+ *  - Fix signature() on X86_64
  */
 
 #pragma mark - Headers
@@ -338,8 +339,6 @@ This function is tailor-made for macOS environments and can be invoked directly 
 ```objective-c
 dumpMacDeviceInfo();
 Example Output:
-plaintext
-Copy code
 System Information:
 Kernel Version: Darwin 20.3.0
 Hardware Model: MacBookPro15,1
@@ -1328,7 +1327,7 @@ int main(int argc, const char * argv[]) {
 //            dumpDeviceInfo();
 //            dumpMacDeviceInfo();
 
-            NSLog(@"XNU Image Fuzzer Version 1.3.1 transferring to AppDelegate Version 1.0.1 at %@", currentTime);
+            NSLog(@"XNU Image Fuzzer Version ✅ %@", currentTime);
             return 0; // Successful completion of command-line image processing
         }  else {
             // Standard iOS app launch

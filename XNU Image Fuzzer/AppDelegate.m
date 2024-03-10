@@ -3,7 +3,7 @@
  *  @brief Proof of concept XNU Image Fuzzer.
  *  @author @h02332 | David Hoyt
  *  @date 29 FEB 2024
- *  @version 1.0.1
+ *  @version 1.0.2
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -22,9 +22,6 @@
  *  - 29/02/2024, h02332: Initial commit.
  *
  *  @section TODO
- *  - Grayscale Implementation.
- *  - ICC Color Profiles.
- *  - Refactor Example Fuzzer.
  */
 
 #import "AppDelegate.h"
@@ -48,7 +45,7 @@ void uncaughtExceptionHandler(NSException *exception) {
     NSString *currentDateTime = [formatter stringFromDate:[NSDate date]];
     
     // Log the start time of the application using os_log
-    os_log(OS_LOG_DEFAULT, "XNU Image Fuzzer Version 1.3.1 Rendering at %@", currentDateTime);
+    os_log(OS_LOG_DEFAULT, "XNU Image Fuzzer Version Rendering at %@", currentDateTime);
   
     // Initialize the window to cover the entire screen
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
