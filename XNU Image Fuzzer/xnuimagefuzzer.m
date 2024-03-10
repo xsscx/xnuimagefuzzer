@@ -1324,9 +1324,9 @@ int main(int argc, const char * argv[]) {
             }
 
             processImage(image, permutation);
-            dump_comm_page();
-            dumpDeviceInfo();
-            dumpMacDeviceInfo();
+//            dump_comm_page();
+//            dumpDeviceInfo();
+//            dumpMacDeviceInfo();
 
             NSLog(@"XNU Image Fuzzer Version 1.3.1 transferring to AppDelegate Version 1.0.1 at %@", currentTime);
             return 0; // Successful completion of command-line image processing
