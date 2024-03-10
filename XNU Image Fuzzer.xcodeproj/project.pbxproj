@@ -7,39 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1DC215BF2B91E1FB00247388 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1DC215BE2B91E1FB00247388 /* Assets.xcassets */; };
 		1DE209042B867C4700A3C0D5 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209032B867C4700A3C0D5 /* AppDelegate.m */; };
 		1DE209072B867C4700A3C0D5 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209062B867C4700A3C0D5 /* SceneDelegate.m */; };
 		1DE2090A2B867C4700A3C0D5 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209092B867C4700A3C0D5 /* ViewController.m */; };
 		1DE2090D2B867C4700A3C0D5 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1DE2090B2B867C4700A3C0D5 /* Main.storyboard */; };
 		1DE209122B867C4800A3C0D5 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 1DE209102B867C4800A3C0D5 /* LaunchScreen.storyboard */; };
 		1DE209152B867C4800A3C0D5 /* xnuimagefuzzer.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */; };
-		1DE2091F2B867C4800A3C0D5 /* XNU_Image_FuzzerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE2091E2B867C4800A3C0D5 /* XNU_Image_FuzzerTests.m */; };
-		1DE209292B867C4800A3C0D5 /* XNU_Image_FuzzerUITests.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209282B867C4800A3C0D5 /* XNU_Image_FuzzerUITests.m */; };
-		1DE2092B2B867C4800A3C0D5 /* XNU_Image_FuzzerUITestsLaunchTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE2092A2B867C4800A3C0D5 /* XNU_Image_FuzzerUITestsLaunchTests.m */; };
 		1DE209382B867CF900A3C0D5 /* Flowers.exr in Resources */ = {isa = PBXBuildFile; fileRef = 1DE209372B867CF900A3C0D5 /* Flowers.exr */; };
 		1DEB07A52B90E40F001AAF5D /* 2225.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 1DEB07A42B90E40F001AAF5D /* 2225.jpg */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		1DE2091B2B867C4800A3C0D5 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1DE208F72B867C4700A3C0D5 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1DE208FE2B867C4700A3C0D5;
-			remoteInfo = "XNU Image Fuzzer";
-		};
-		1DE209252B867C4800A3C0D5 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 1DE208F72B867C4700A3C0D5 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 1DE208FE2B867C4700A3C0D5;
-			remoteInfo = "XNU Image Fuzzer";
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
-		1DC215BE2B91E1FB00247388 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = ../../../Pictures/asset_collection/Assets.xcassets; sourceTree = "<group>"; };
 		1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "XNU Image Fuzzer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1DE209022B867C4700A3C0D5 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		1DE209032B867C4700A3C0D5 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -51,31 +29,12 @@
 		1DE209112B867C4800A3C0D5 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1DE209132B867C4800A3C0D5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = xnuimagefuzzer.m; sourceTree = "<group>"; };
-		1DE2091A2B867C4800A3C0D5 /* XNU Image FuzzerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "XNU Image FuzzerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		1DE2091E2B867C4800A3C0D5 /* XNU_Image_FuzzerTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XNU_Image_FuzzerTests.m; sourceTree = "<group>"; };
-		1DE209242B867C4800A3C0D5 /* XNU Image FuzzerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "XNU Image FuzzerUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		1DE209282B867C4800A3C0D5 /* XNU_Image_FuzzerUITests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XNU_Image_FuzzerUITests.m; sourceTree = "<group>"; };
-		1DE2092A2B867C4800A3C0D5 /* XNU_Image_FuzzerUITestsLaunchTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XNU_Image_FuzzerUITestsLaunchTests.m; sourceTree = "<group>"; };
 		1DE209372B867CF900A3C0D5 /* Flowers.exr */ = {isa = PBXFileReference; lastKnownFileType = file; path = Flowers.exr; sourceTree = "<group>"; };
 		1DEB07A42B90E40F001AAF5D /* 2225.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = 2225.jpg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		1DE208FC2B867C4700A3C0D5 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1DE209172B867C4800A3C0D5 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1DE209212B867C4800A3C0D5 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -89,8 +48,6 @@
 			isa = PBXGroup;
 			children = (
 				1DE209012B867C4700A3C0D5 /* XNU Image Fuzzer */,
-				1DE2091D2B867C4800A3C0D5 /* XNU Image FuzzerTests */,
-				1DE209272B867C4800A3C0D5 /* XNU Image FuzzerUITests */,
 				1DE209002B867C4700A3C0D5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -99,8 +56,6 @@
 			isa = PBXGroup;
 			children = (
 				1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */,
-				1DE2091A2B867C4800A3C0D5 /* XNU Image FuzzerTests.xctest */,
-				1DE209242B867C4800A3C0D5 /* XNU Image FuzzerUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -116,30 +71,12 @@
 				1DE209092B867C4700A3C0D5 /* ViewController.m */,
 				1DE2090B2B867C4700A3C0D5 /* Main.storyboard */,
 				1DE209102B867C4800A3C0D5 /* LaunchScreen.storyboard */,
-				1DC215BE2B91E1FB00247388 /* Assets.xcassets */,
 				1DE209132B867C4800A3C0D5 /* Info.plist */,
 				1DEB07A42B90E40F001AAF5D /* 2225.jpg */,
 				1DE209372B867CF900A3C0D5 /* Flowers.exr */,
 				1DE209142B867C4800A3C0D5 /* xnuimagefuzzer.m */,
 			);
 			path = "XNU Image Fuzzer";
-			sourceTree = "<group>";
-		};
-		1DE2091D2B867C4800A3C0D5 /* XNU Image FuzzerTests */ = {
-			isa = PBXGroup;
-			children = (
-				1DE2091E2B867C4800A3C0D5 /* XNU_Image_FuzzerTests.m */,
-			);
-			path = "XNU Image FuzzerTests";
-			sourceTree = "<group>";
-		};
-		1DE209272B867C4800A3C0D5 /* XNU Image FuzzerUITests */ = {
-			isa = PBXGroup;
-			children = (
-				1DE209282B867C4800A3C0D5 /* XNU_Image_FuzzerUITests.m */,
-				1DE2092A2B867C4800A3C0D5 /* XNU_Image_FuzzerUITestsLaunchTests.m */,
-			);
-			path = "XNU Image FuzzerUITests";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -162,42 +99,6 @@
 			productReference = 1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */;
 			productType = "com.apple.product-type.application";
 		};
-		1DE209192B867C4800A3C0D5 /* XNU Image FuzzerTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 1DE209312B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image FuzzerTests" */;
-			buildPhases = (
-				1DE209162B867C4800A3C0D5 /* Sources */,
-				1DE209172B867C4800A3C0D5 /* Frameworks */,
-				1DE209182B867C4800A3C0D5 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				1DE2091C2B867C4800A3C0D5 /* PBXTargetDependency */,
-			);
-			name = "XNU Image FuzzerTests";
-			productName = "XNU Image FuzzerTests";
-			productReference = 1DE2091A2B867C4800A3C0D5 /* XNU Image FuzzerTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		1DE209232B867C4800A3C0D5 /* XNU Image FuzzerUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 1DE209342B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image FuzzerUITests" */;
-			buildPhases = (
-				1DE209202B867C4800A3C0D5 /* Sources */,
-				1DE209212B867C4800A3C0D5 /* Frameworks */,
-				1DE209222B867C4800A3C0D5 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				1DE209262B867C4800A3C0D5 /* PBXTargetDependency */,
-			);
-			name = "XNU Image FuzzerUITests";
-			productName = "XNU Image FuzzerUITests";
-			productReference = 1DE209242B867C4800A3C0D5 /* XNU Image FuzzerUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -209,14 +110,6 @@
 				TargetAttributes = {
 					1DE208FE2B867C4700A3C0D5 = {
 						CreatedOnToolsVersion = 15.2;
-					};
-					1DE209192B867C4800A3C0D5 = {
-						CreatedOnToolsVersion = 15.2;
-						TestTargetID = 1DE208FE2B867C4700A3C0D5;
-					};
-					1DE209232B867C4800A3C0D5 = {
-						CreatedOnToolsVersion = 15.2;
-						TestTargetID = 1DE208FE2B867C4700A3C0D5;
 					};
 				};
 			};
@@ -234,8 +127,6 @@
 			projectRoot = "";
 			targets = (
 				1DE208FE2B867C4700A3C0D5 /* XNU Image Fuzzer */,
-				1DE209192B867C4800A3C0D5 /* XNU Image FuzzerTests */,
-				1DE209232B867C4800A3C0D5 /* XNU Image FuzzerUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -249,21 +140,6 @@
 				1DEB07A52B90E40F001AAF5D /* 2225.jpg in Resources */,
 				1DE209382B867CF900A3C0D5 /* Flowers.exr in Resources */,
 				1DE2090D2B867C4700A3C0D5 /* Main.storyboard in Resources */,
-				1DC215BF2B91E1FB00247388 /* Assets.xcassets in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1DE209182B867C4800A3C0D5 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1DE209222B867C4800A3C0D5 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -281,37 +157,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		1DE209162B867C4800A3C0D5 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				1DE2091F2B867C4800A3C0D5 /* XNU_Image_FuzzerTests.m in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		1DE209202B867C4800A3C0D5 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				1DE2092B2B867C4800A3C0D5 /* XNU_Image_FuzzerUITestsLaunchTests.m in Sources */,
-				1DE209292B867C4800A3C0D5 /* XNU_Image_FuzzerUITests.m in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
-
-/* Begin PBXTargetDependency section */
-		1DE2091C2B867C4800A3C0D5 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 1DE208FE2B867C4700A3C0D5 /* XNU Image Fuzzer */;
-			targetProxy = 1DE2091B2B867C4800A3C0D5 /* PBXContainerItemProxy */;
-		};
-		1DE209262B867C4800A3C0D5 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 1DE208FE2B867C4700A3C0D5 /* XNU Image Fuzzer */;
-			targetProxy = 1DE209252B867C4800A3C0D5 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		1DE2090B2B867C4700A3C0D5 /* Main.storyboard */ = {
@@ -520,74 +366,6 @@
 			};
 			name = Release;
 		};
-		1DE209322B867C4800A3C0D5 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "cx.srd.xnuimagefuzzer.XNU-Image-FuzzerTests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XNU Image Fuzzer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XNU Image Fuzzer";
-			};
-			name = Debug;
-		};
-		1DE209332B867C4800A3C0D5 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
-				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 17.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "cx.srd.xnuimagefuzzer.XNU-Image-FuzzerTests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/XNU Image Fuzzer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/XNU Image Fuzzer";
-			};
-			name = Release;
-		};
-		1DE209352B867C4800A3C0D5 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "cx.srd.xnuimagefuzzer.XNU-Image-FuzzerUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "XNU Image Fuzzer";
-			};
-			name = Debug;
-		};
-		1DE209362B867C4800A3C0D5 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7KJ5XYCA8X;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "cx.srd.xnuimagefuzzer.XNU-Image-FuzzerUITests";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "XNU Image Fuzzer";
-			};
-			name = Release;
-		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -605,24 +383,6 @@
 			buildConfigurations = (
 				1DE2092F2B867C4800A3C0D5 /* Debug */,
 				1DE209302B867C4800A3C0D5 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		1DE209312B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image FuzzerTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				1DE209322B867C4800A3C0D5 /* Debug */,
-				1DE209332B867C4800A3C0D5 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		1DE209342B867C4800A3C0D5 /* Build configuration list for PBXNativeTarget "XNU Image FuzzerUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				1DE209352B867C4800A3C0D5 /* Debug */,
-				1DE209362B867C4800A3C0D5 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
