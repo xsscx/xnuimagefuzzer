@@ -1,17 +1,26 @@
 # XNU Image Fuzzer 
 
-Last Updated: TUE 06 MAR 2024, 0600 EST
+Last Updated: TUE 06 MAR 2024, 0700 EST
 
-## Project summary
+## Project Summary
 
 The Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines. The Objective-C Code implements 12 CGCreateBitmap & CGColorSpace Functions working with Raw Data and String Injection that are User Controllable Inputs.
 - PermaLink https://srd.cx/xnu-image-fuzzer/
-  
+     
+
+### Build & Install Status
+| Build OS & Device Info           | Build   |  Install  | 
+| -------------------------------- | ------------- | ------------- | 
+| macOS 14.4 X86_64       | ✅          | ✅          |       
+| macOS 14.4 arm  | ✅          | ✅          |
+| iPAD OS 17.4       | ✅          | ✅          |        
+| iPhone OS 17.4  | ✅          | ✅          |
+
+#### Project Support
+- Open an Issue
+
 ### whoami
 I am David Hoyt and participated in the Apple Security Research Device Program for 2021 & 2022. Apple sent me an iPhone 11 & iPhone 12 for A/B testing, very helpful. This Project is some of the Code I wrote for debugging on the SRD.
-
-#### iPhone 14 Pro Max Render 
-<img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #1" style="height:550px; width:330px;"/> <img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-002.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #2" style="height:550px; width:330px;"/> 
 
 ## Quick Start
 - Open as Xcode Project or Clone
@@ -19,7 +28,13 @@ I am David Hoyt and participated in the Apple Security Research Device Program f
   - For Arguments on Launch
     - 2225.jpg, or any Image File Type
     - -1
+<img src="https://xss.cx/2024/03/10/img/xnuimagefuzzer-xcode-args-pass-on-launch-example-002.png" alt="Xcode -> Product -> Edit Scheme" style="height:177px; width:307px;"/>
+<img src="https://xss.cx/2024/03/10/img/xnuimagefuzzer-xcode-args-pass-on-launch-example-001.png" alt="Xcode -> Product -> Edit Scheme" style="height:507px; width:928px;"/>
+
 - Click Run
+  - Screen Grab on iPhone 14 Pro MAX
+    
+<img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #1" style="height:550px; width:330px;"/> <img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-002.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #2" style="height:550px; width:330px;"/> 
 
 ### Injection Strings Configuration
 - User Controllable Input for Fuzzing
@@ -134,55 +149,6 @@ File Sharing is Enabled via Info.plist
 The example Code provides the ability to change a few Numbers in a Function() and further Modify the Program Behavior, perhaps you will get a good Crash. 
 
 For Crash Analysis, consider Reading https://srd.cx/xnu-crash-analysis/ and for arm64e Pointer Authentication Crashes, consider Reading https://srd.cx/possible-pointer-authentication-failure-data-abort/ for a quick snapshot of what may be Signal, or Noise.
-
-- This Project is for anyone wanting to Learn Objective-C or XNU Image Fuzzing. 
-- If you have Questions, then Open an Issue.
-
-## XCode Crash
-If you have completed the suggested Quick Start, and copied Flowers.exr into XCode, have you seen the EXR Crash for XCode yet?
-
-If you have not yet received the XCode Crash, View Flowers.exr or Commit the Changes to your local Repository. When you attempt View the OpenEXR Distribution of Flowers.exr, the Rendering should Trigger a Crash in XCode due to the Sub-Sampling Issue described at URL https://github.com/xsscx/macos-research/blob/main/code/imageio/crashes/libAppleEXR-discussion-analysis.md.
-
-If you use Finder or any App that Calls into libAppleEXR, and View Flowers.exr, you should get multiple Crashes. 
-```
-Process:               Xcode [30281]
-Path:                  /Applications/Xcode.app/Contents/MacOS/Xcode
-Identifier:            com.apple.dt.Xcode
-Version:               15.2 (22503)
-Build Info:            IDEApplication-22503000000000000~3 (15C500b)
-...
-Exception Type:        EXC_CRASH (SIGABRT)
-Exception Codes:       0x0000000000000000, 0x0000000000000000
-
-Termination Reason:    Namespace SIGNAL, Code 6 Abort trap: 6
-Terminating Process:   Xcode [30281]
-
-Application Specific Information:
-abort() called
-
-
-Thread 0::  Dispatch queue: com.apple.root.user-interactive-qos
-0   libAppleEXR.dylib             	    0x7ffa0b328669 void _YCCAtoRGBA<half, 2u, 16>(half const*&, half const*&, half*&, YccMatrix const&, half const&) + 471
-1   libAppleEXR.dylib             	    0x7ffa0b31cced void YCCAtoRGBA<half, 2u>(half const*, unsigned long, half const*, unsigned long, half*, unsigned long, double, YccMatrix const&, unsigned int, unsigned int, unsigned int) + 155
-2   libAppleEXR.dylib             	    0x7ffa0b31c87f TileDecoder::ReadYccBlock(void*, unsigned long) + 1619
-3   libdispatch.dylib             	    0x7ff804c915cd _dispatch_client_callout2 + 8
-4   libdispatch.dylib             	    0x7ff804ca319d _dispatch_apply_invoke_and_wait + 214
-5   libdispatch.dylib             	    0x7ff804ca26ab _dispatch_apply_with_attr_f + 1181
-6   libAppleEXR.dylib             	    0x7ffa0b31bfce axr_error_t LaunchBlocks<ReadPixelsArgs>(void (*)(void*, unsigned long), ReadPixelsArgs const*, unsigned long, axr_flags_t) + 355
-7   libAppleEXR.dylib             	    0x7ffa0b31f422 TileDecoder::ReadYccRGBAPixels(double, YccMatrix const&, void*, unsigned long) const + 2242
-8   libAppleEXR.dylib             	    0x7ffa0b3115f9 Part::ReadRGBAPixels(axr_decoder*, void*, unsigned long, double, axr_flags_t) const + 2511
-9   ImageIO                       	    0x7ff80fbafd25 EXRReadPlugin::decodeBlockAppleEXR(void*, unsigned long) + 337
-
-```
-
-## Roadmap
-- Display Seed Image
-- Fuzzing Instrumentation
-- Distributed Fuzzing
-  - Pull Seeds
-  - Push PoC's
-  - Analytics
-- Crash Analysis
 
 ## Console log
 ```
