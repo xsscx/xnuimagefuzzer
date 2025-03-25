@@ -1,6 +1,24 @@
 # XNU Image Fuzzer 
 
-Last Updated: SUN 02 JUN 2024, 0800 EDT
+Last Updated: TUESDAY 25 MARCH 2025 1000 EDT by David Hoyt
+
+## Coming Soon
+
+The XNU Image Fuzzer (XIF) Project will integrate [IccMAX](https://github.com/InternationalColorConsortium/DemoIccMAX) for Image and Icc Profile Fuzzing.
+
+XIF is being Ported to C++ for Cross Platform & Cross Toolchain Fuzzing.
+
+ETA Wen: End of Q2/2025.
+
+## 🛠️ PR119: iccMAX Tooling & Build System
+
+**🔁 Last Updated:** 24-MAR-2025 by David Hoyt  
+**📍 PR Link:** [PR119 on GitHub](https://github.com/InternationalColorConsortium/DemoIccMAX/pull/119)  
+**🧪 CI Status:**  
+[![PR119-Latest](https://github.com/xsscx/PatchIccMAX/actions/workflows/PR119-Latest.yaml/badge.svg)](https://github.com/xsscx/PatchIccMAX/actions/workflows/PR119-Latest.yaml)
+[![PR119-Scan-Build](https://github.com/xsscx/PatchIccMAX/actions/workflows/pr119-ubuntu-clang-scan.yaml/badge.svg)](https://github.com/xsscx/PatchIccMAX/actions/workflows/pr119-ubuntu-clang-scan.yaml)
+
+---
 
 ## Project Summary
 
