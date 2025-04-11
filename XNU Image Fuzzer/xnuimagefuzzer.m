@@ -154,8 +154,6 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
 
 #pragma mark - Injection Strings Configuration
 
-#pragma mark - Injection Strings Configuration
-
 /*!
  * @brief Configures robust strings for security testing within the application.
  *
