@@ -177,22 +177,29 @@ jobs:
           APP_BUNDLE=$(echo "$BINARY" | sed 's|/Contents/MacOS/.*||')
           mkdir -p /tmp/profraw /tmp/sanitizer-logs /tmp/fuzzed-output
 
-          # Mac Catalyst apps launched via 'open' inherit env from launchd session
-          launchctl setenv FUZZ_OUTPUT_DIR "/tmp/fuzzed-output"
-          launchctl setenv LLVM_PROFILE_FILE "/tmp/profraw/fuzzer-%m_%p.profraw"
-          launchctl setenv ASAN_OPTIONS "detect_leaks=0:halt_on_error=0:print_stats=1:log_path=/tmp/sanitizer-logs/asan"
-          launchctl setenv UBSAN_OPTIONS "print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer-logs/ubsan"
+          # Set env vars via launchctl (fallback) AND export (for open --env)
+          export FUZZ_OUTPUT_DIR="/tmp/fuzzed-output"
+          export LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw"
+          export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:log_path=/tmp/sanitizer-logs/asan"
+          export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer-logs/ubsan"
 
-          # Wait for launchd to propagate env vars before launching
+          # Also set in launchd session as fallback
+          launchctl setenv FUZZ_OUTPUT_DIR "$FUZZ_OUTPUT_DIR"
+          launchctl setenv LLVM_PROFILE_FILE "$LLVM_PROFILE_FILE"
+          launchctl setenv ASAN_OPTIONS "$ASAN_OPTIONS"
+          launchctl setenv UBSAN_OPTIONS "$UBSAN_OPTIONS"
           sleep 1
 
           echo "🔨 Launching instrumented Mac Catalyst app: $APP_BUNDLE"
-          echo "   LLVM_PROFILE_FILE=$(launchctl getenv LLVM_PROFILE_FILE 2>/dev/null || echo 'not set')"
+          echo "   LLVM_PROFILE_FILE=$LLVM_PROFILE_FILE"
 
-          # Launch via 'open' — properly initializes UIKit for Mac Catalyst
-          # (Running the bare Mach-O binary directly exits immediately)
-          # 'open' blocks until the app exits; background + disown so script continues
-          open "$APP_BUNDLE" &
+          # Launch via 'open --env' (macOS 13+) — passes env vars directly to process
+          # Falls back to plain 'open' if --env is not supported
+          open --env FUZZ_OUTPUT_DIR="$FUZZ_OUTPUT_DIR" \
+               --env LLVM_PROFILE_FILE="$LLVM_PROFILE_FILE" \
+               --env ASAN_OPTIONS="$ASAN_OPTIONS" \
+               --env UBSAN_OPTIONS="$UBSAN_OPTIONS" \
+               "$APP_BUNDLE" &
           OPEN_PID=$!
           disown $OPEN_PID
           echo "✅ App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
@@ -271,6 +278,11 @@ jobs:
           echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Profraw files | ${PROFRAW_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
 
+          # Ensure artifact directories have at least a summary file
+          echo "ASAN: ${ASAN_COUNT}, UBSAN: ${UBSAN_COUNT}, Images: ${FILE_COUNT}" \
+            > /tmp/sanitizer-logs/summary.txt
+          cp /tmp/sanitizer-logs/summary.txt /tmp/fuzzer-output.log
+
       - name: Validate output quality
         if: always()
         run: |
@@ -344,6 +356,7 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
             echo "No profraw files collected during runtime." >> "$GITHUB_STEP_SUMMARY"
+            echo "No profraw files collected." > /tmp/coverage-report/summary.txt
             exit 0
           fi
 

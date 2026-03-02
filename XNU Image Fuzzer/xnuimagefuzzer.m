@@ -57,6 +57,10 @@
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h> // For UTTypePNG
 
+// LLVM coverage runtime — flush profraw data before exit
+extern int __llvm_profile_write_file(void) __attribute__((weak));
+extern void __llvm_profile_set_filename(const char *) __attribute__((weak));
+
 #pragma mark - Verbose Logging
 
 static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
@@ -1878,6 +1882,14 @@ int main(int argc, const char * argv[]) {
             setenv(envVars[i], envValues[i], 1);
         }
 
+        // Set LLVM coverage output path if env var is set but runtime hasn't picked it up
+        // (happens with Mac Catalyst apps launched via 'open')
+        const char *profFile = getenv("LLVM_PROFILE_FILE");
+        if (profFile && __llvm_profile_set_filename) {
+            NSLog(@"Setting LLVM profile file: %s", profFile);
+            __llvm_profile_set_filename(profFile);
+        }
+
         // Detect if launched with user-provided command-line arguments for image processing
         if (argc > 2 && argv[1][0] != '-') {
             NSString *imageName = [NSString stringWithUTF8String:argv[1]];
@@ -1897,10 +1909,23 @@ int main(int argc, const char * argv[]) {
             dumpMacDeviceInfo();
 
             NSLog(@"XNU Image Fuzzer ✅ %@", currentTime);
+
+            // Flush LLVM coverage data before exit
+            if (__llvm_profile_write_file) {
+                __llvm_profile_write_file();
+            }
+
             return 0; // Successful completion of command-line image processing
         } else if (argc == 1 || (argc > 2 && argv[1][0] == '-')) {
             // Perform all image permutations if no valid user-provided arguments are present
             performAllImagePermutations();
+
+            // Flush LLVM coverage data before exit (weak-linked, no-op without instrumentation)
+            if (__llvm_profile_write_file) {
+                NSLog(@"Flushing LLVM coverage data...");
+                __llvm_profile_write_file();
+            }
+
             return 0; // Successful completion of image permutation fuzzing
         } else {
             NSLog(@"Incorrect usage. Expected 0 or 2 arguments, got %d", argc - 1);
