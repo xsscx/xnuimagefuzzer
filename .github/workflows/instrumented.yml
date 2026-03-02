@@ -198,17 +198,21 @@ jobs:
           echo "✅ App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
 
           # Poll for output files (fuzzing runs in viewDidLoad)
-          for i in $(seq 1 60); do
+          # 17 specs × 6 files each (seed + corrupted + 4 format variants) = 102 expected
+          for i in $(seq 1 120); do
             FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$FILE_COUNT" -ge 14 ]; then
+            if [ "$FILE_COUNT" -ge 80 ]; then
               echo "✅ Found $FILE_COUNT files after ${i}s"
               break
+            fi
+            if [ "$((i % 10))" -eq 0 ]; then
+              echo "⏳ ${FILE_COUNT} files after ${i}s..."
             fi
             sleep 1
           done
 
           # Extra time for last files to flush to disk
-          sleep 3
+          sleep 5
 
           # Terminate app gracefully for profraw flush:
           # SIGINT triggers atexit() handlers (including llvm profraw writer)
