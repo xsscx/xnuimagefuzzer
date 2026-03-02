@@ -1,13 +1,13 @@
 # Project Summary
 
-**Last Updated:** 2026-02-04 17:28:25 UTC
+**Last Updated:** 2026-03-02 20:51:33 UTC
 
-The XNU Image Fuzzer Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines. The Objective-C Code implements 12 CGCreateBitmap & CGColorSpace Functions working with Raw Data and String Injection that are User Controllable Inputs.
+The XNU Image Fuzzer Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines. The Objective-C Code implements 15 CGCreateBitmap & CGColorSpace Functions working with Raw Data and String Injection that are User Controllable Inputs.
 - PermaLink https://srd.cx/xnu-image-fuzzer/
 - https://srd.cx/cve-2022-26730/
 
 ## Workflow
-
+- https://github.com/xsscx/xnuimagefuzzer/actions
 - Create Images with https://github.com/xsscx/xnuimagetools
 - Fuzz Images with https://github.com/xsscx/xnuimagefuzzer
 - Create ICC Profiles with [ColorBleed Tools](https://github.com/xsscx/research/tree/main/colorbleed_tools)
