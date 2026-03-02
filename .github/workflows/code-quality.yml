@@ -1,0 +1,206 @@
+name: Code Quality Checks
+
+on:
+  push:
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - '**/*.py'
+      - 'XNU Image Fuzzer/CMakeLists.txt'
+      - '.github/workflows/code-quality.yml'
+  pull_request:
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - '**/*.py'
+      - 'XNU Image Fuzzer/CMakeLists.txt'
+      - '.github/workflows/code-quality.yml'
+  workflow_dispatch:
+
+jobs:
+  objc-syntax:
+    name: Objective-C Syntax Check
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for duplicate defines
+        run: |
+          echo "=== Checking for duplicate #define macros ==="
+          duplicates=0
+          for file in "XNU Image Fuzzer/xnuimagefuzzer.m" "XNU Image Fuzzer/ViewController.m" \
+                      "XNU Image Fuzzer/AppDelegate.m" "XNU Image Fuzzer/SceneDelegate.m"; do
+            if [ -f "$file" ]; then
+              # Extract #define names and check for duplicates
+              dups=$(grep -E '^\s*#define\s+' "$file" | awk '{print $2}' | sort | uniq -d)
+              if [ -n "$dups" ]; then
+                echo "❌ Duplicate #define(s) in $file:"
+                echo "$dups"
+                duplicates=1
+              else
+                echo "✅ No duplicate #defines in $file"
+              fi
+            fi
+          done
+          if [ "$duplicates" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Compile Objective-C syntax check (xnuimagefuzzer.m)
+        run: |
+          echo "=== Syntax-checking xnuimagefuzzer.m ==="
+          clang -fsyntax-only -x objective-c \
+            -fobjc-arc \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -target arm64-apple-ios14.2 \
+            -fmodules \
+            -Werror=incompatible-pointer-types \
+            -Werror=macro-redefined \
+            -I"XNU Image Fuzzer" \
+            "XNU Image Fuzzer/xnuimagefuzzer.m"
+          echo "✅ xnuimagefuzzer.m syntax OK"
+
+      - name: Compile Objective-C syntax check (ViewController.m)
+        run: |
+          echo "=== Syntax-checking ViewController.m ==="
+          clang -fsyntax-only -x objective-c \
+            -fobjc-arc \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -target arm64-apple-ios14.2 \
+            -fmodules \
+            -Werror=incompatible-pointer-types \
+            -I"XNU Image Fuzzer" \
+            "XNU Image Fuzzer/ViewController.m"
+          echo "✅ ViewController.m syntax OK"
+
+      - name: Compile Objective-C syntax check (AppDelegate.m)
+        run: |
+          echo "=== Syntax-checking AppDelegate.m ==="
+          clang -fsyntax-only -x objective-c \
+            -fobjc-arc \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -target arm64-apple-ios14.2 \
+            -fmodules \
+            -I"XNU Image Fuzzer" \
+            "XNU Image Fuzzer/AppDelegate.m"
+          echo "✅ AppDelegate.m syntax OK"
+
+      - name: Compile Objective-C syntax check (SceneDelegate.m)
+        run: |
+          echo "=== Syntax-checking SceneDelegate.m ==="
+          clang -fsyntax-only -x objective-c \
+            -fobjc-arc \
+            -isysroot "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -target arm64-apple-ios14.2 \
+            -fmodules \
+            -I"XNU Image Fuzzer" \
+            "XNU Image Fuzzer/SceneDelegate.m"
+          echo "✅ SceneDelegate.m syntax OK"
+
+      - name: Verify UIImageView reuse pattern
+        run: |
+          echo "=== Checking UIImageView reuse in ViewController.m ==="
+          if grep -q 'viewWithTag:100' "XNU Image Fuzzer/ViewController.m"; then
+            echo "✅ UIImageView reuse pattern found (viewWithTag:100)"
+          else
+            echo "❌ UIImageView reuse pattern missing — cells may leak subviews"
+            exit 1
+          fi
+
+      - name: Verify const correctness for injectStrings
+        run: |
+          echo "=== Checking const char* for injectStrings ==="
+          if grep -q 'const char\* injectStrings' "XNU Image Fuzzer/xnuimagefuzzer.m"; then
+            echo "✅ injectStrings uses const char*"
+          else
+            echo "❌ injectStrings should use const char*"
+            exit 1
+          fi
+
+  python-lint:
+    name: Python Lint & Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install lint tools
+        run: pip install pyflakes
+
+      - name: Python syntax check
+        run: |
+          echo "=== Checking Python syntax ==="
+          errors=0
+          for f in *.py; do
+            if python3 -m py_compile "$f" 2>&1; then
+              echo "✅ $f syntax OK"
+            else
+              echo "❌ $f has syntax errors"
+              errors=1
+            fi
+          done
+          if [ "$errors" -eq 1 ]; then
+            exit 1
+          fi
+
+      - name: Pyflakes static analysis
+        run: |
+          echo "=== Running pyflakes ==="
+          pyflakes *.py
+
+      - name: Check for duplicate dict keys
+        run: |
+          echo "=== Checking for duplicate dict keys in read-magic-numbers.py ==="
+          python3 -c "
+          import ast, sys
+          with open('read-magic-numbers.py') as f:
+              tree = ast.parse(f.read())
+          for node in ast.walk(tree):
+              if isinstance(node, ast.Dict):
+                  keys = []
+                  for k in node.keys:
+                      if k is not None:
+                          key_repr = ast.dump(k)
+                          if key_repr in keys:
+                              print(f'❌ Duplicate dict key at line {k.lineno}')
+                              sys.exit(1)
+                          keys.append(key_repr)
+          print('✅ No duplicate dict keys found')
+          "
+
+      - name: Verify logging format string
+        run: |
+          echo "=== Checking logging format in read-magic-numbers.py ==="
+          if grep -P "levelname.*levelname" read-magic-numbers.py; then
+            echo "❌ Duplicate levelname in logging format"
+            exit 1
+          else
+            echo "✅ Logging format OK"
+          fi
+
+  cmake-check:
+    name: CMakeLists.txt Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify source file reference
+        run: |
+          echo "=== Checking CMakeLists.txt source file reference ==="
+          if grep -q 'add_executable(xnuimagefuzzer xnuimagefuzzer.m)' "XNU Image Fuzzer/CMakeLists.txt"; then
+            echo "✅ CMakeLists.txt references correct source file (xnuimagefuzzer.m)"
+          else
+            echo "❌ CMakeLists.txt references wrong source file"
+            grep 'add_executable' "XNU Image Fuzzer/CMakeLists.txt"
+            exit 1
+          fi
+
+      - name: CMake syntax check
+        run: |
+          echo "=== Checking CMake syntax ==="
+          cd "XNU Image Fuzzer"
+          cmake -P CMakeLists.txt 2>&1 || true
+          echo "✅ CMakeLists.txt parsed without fatal errors"

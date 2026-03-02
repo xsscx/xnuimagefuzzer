@@ -88,16 +88,15 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
  */
 #define ALL -1 // Special flag for operations applicable to all items or states.
 #define MAX_PERMUTATION 12 // Maximum permutations in image processing.
-#define COMM_PAGE64_BASE_ADDRESS (0x0000000FFFFFC000ULL)
-#define COMM_PAGE_CPU_CAPABILITIES64 (COMM_PAGE64_BASE_ADDRESS + 0x010)
-#define MAX_PERMUTATION 12 // Maximum permutations in image processing.
 #ifdef __arm64__
 #define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
 #elif defined(__x86_64__)
-// Adjust this base address for x86_64 architectures as necessary
-// #define COMM_PAGE64_BASE_ADDRESS        (0x00007fffffe00000ULL)
+#define COMM_PAGE64_BASE_ADDRESS        (0x00007fffffe00000ULL)
+#else
+#define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
 #endif
 
+#define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
 #define COMM_PAGE_VERSION               (COMM_PAGE64_BASE_ADDRESS + 0x01E)
 #define COMM_PAGE_NCPUS                 (COMM_PAGE64_BASE_ADDRESS + 0x022)
 #define COMM_PAGE_CACHE_LINESIZE        (COMM_PAGE64_BASE_ADDRESS + 0x026)
@@ -112,7 +111,6 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
 #define COMM_PAGE_LOGICAL_CPUS          (COMM_PAGE64_BASE_ADDRESS + 0x036)
 #define COMM_PAGE_MEMORY_SIZE           (COMM_PAGE64_BASE_ADDRESS + 0x038)
 #define COMM_PAGE_CPUFAMILY             (COMM_PAGE64_BASE_ADDRESS + 0x040)
-#define COMM_PAGE_CPU_CAPABILITIES64    (COMM_PAGE64_BASE_ADDRESS + 0x010)
 
 #pragma mark - Color Definitions
 
@@ -185,7 +183,7 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
 #define NUMBER_OF_STRINGS 10 // Total injection strings count.
 
 // Array for iteration and application in tests.
-char* injectStrings[NUMBER_OF_STRINGS] = {
+const char* injectStrings[NUMBER_OF_STRINGS] = {
     INJECT_STRING_1,
     INJECT_STRING_2,
     INJECT_STRING_3,
@@ -572,7 +570,6 @@ void printColored(const char* color, const char* message) {
  */
 BOOL isValidImagePath(NSString *path);
 unsigned long hashString(const char* str);
-UIImage *loadImageFromFile(NSString *path);
 UIImage *loadImageFromFile(NSString *filePath);
 // NSString* formattedCurrentDateTime(void);
 // NSString *createUniqueDirectoryForSavingImages(void);
@@ -1158,13 +1155,13 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
                     case 0:
                         // Additive noise
                         for (int i = 0; i < 4; i++) {
-                            rawData[pixelIndex + i] += ((float)arc4random_uniform(6) / RAND_MAX * 2.0f - 1.0f); // Noise range [-1, 1] // Noise range [-1, 1]
+                            rawData[pixelIndex + i] += ((float)arc4random() / UINT32_MAX * 2.0f - 1.0f); // Noise range [-1, 1]
                         }
                         break;
                     case 1:
                         // Multiplicative noise (scale)
                         for (int i = 0; i < 4; i++) {
-                            rawData[pixelIndex + i] *= ((float)arc4random_uniform(6) / RAND_MAX * 2.0f); // Scale range [0, 2]
+                            rawData[pixelIndex + i] *= ((float)arc4random() / UINT32_MAX * 2.0f); // Scale range [0, 2]
                         }
                         break;
                     case 2:
@@ -1828,6 +1825,9 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
         return;
     }
 
+    // Initialize memory with 0x41 pattern for post-operation change detection
+    memset(rawData, 0x41, height * bytesPerRow);
+
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     if (!colorSpace) {
         NSLog(@"Failed to create color space");
@@ -2049,6 +2049,9 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
         return;
     }
 
+    // Initialize memory with 0x41 pattern for post-operation change detection
+    memset(rawData, 0x41, height * bytesPerRow);
+
     // Create a color space for the bitmap context
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     if (!colorSpace) {
@@ -2058,7 +2061,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     }
 
     // Define bitmap info with non-premultiplied alpha
-    CGBitmapInfo bitmapInfo = kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = kCGImageAlphaNonpremultipliedLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -2292,7 +2295,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     size_t bytesPerRow = width * 16; // Considering 16 bytes per pixel for HDR
 
     // Allocate memory for raw image data
-    float *rawData = (float *)calloc(height * bytesPerRow, sizeof(float));
+    float *rawData = (float *)calloc(height * width * 4, sizeof(float));
     if (!rawData) {
         NSLog(@"Failed to allocate memory for image processing");
         return;
@@ -2324,26 +2327,25 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     applyEnhancedFuzzingToBitmapContextWithFloats(rawData, width, height, YES);
     currentStringIndex = (currentStringIndex + 1) % NUMBER_OF_STRINGS; // Move to the next string for the next call
 
-    // Initialize a variable to keep track of unchanged and changed bytes
+    // Initialize a variable to keep track of unchanged and changed floats
     size_t unchangedCount = 0;
     size_t changedCount = 0;
+    size_t totalFloats = height * width * 4;
 
-    // Check for 0x41 pattern after operations and detect changes
-    for (size_t i = 0; i < height * bytesPerRow; i++) {
-        if (rawData[i] == 0x41) {
+    // Check for changes in float data after operations
+    for (size_t i = 0; i < totalFloats; i++) {
+        if (rawData[i] == 0.0f) {
             unchangedCount++;
         } else {
             // Log the first few changes to avoid flooding the log
-            if (changedCount < 10) { // Limiting to the first 10 changes for brevity
-                // Using a union to reinterpret the float's bits as an unsigned int for logging
+            if (changedCount < 10) {
                 union {
                     float f;
                     unsigned int u;
                 } floatToHex;
 
-                floatToHex.f = rawData[i]; // Assign the float value to the union
-
-                NSLog(@"Detected change from 0x41 at byte offset %zu, new value: 0x%X", i, floatToHex.u);
+                floatToHex.f = rawData[i];
+                NSLog(@"Detected change at float offset %zu, value: %f (0x%X)", i, rawData[i], floatToHex.u);
             }
             changedCount++;
         }

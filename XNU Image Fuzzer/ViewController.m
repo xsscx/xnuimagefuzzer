@@ -111,10 +111,8 @@
     
     NSLog(@"Total loaded fuzzed images: %lu", (unsigned long)self.fuzzedImages.count);
     
-    // Reload the collection view on the main thread
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self.collectionView reloadData];
-    });
+    // Reload the collection view (viewDidLoad already runs on main thread)
+    [self.collectionView reloadData];
 }
 
 #pragma mark - UICollectionViewDataSource
@@ -141,10 +139,16 @@
     // Configure cell
     cell.backgroundColor = [UIColor lightGrayColor]; // For visibility
     
-    UIImageView *imageView = [[UIImageView alloc] initWithFrame:cell.contentView.bounds];
-    imageView.contentMode = UIViewContentModeScaleAspectFit;
+    // Reuse existing imageView or create a new one (tag 100)
+    UIImageView *imageView = [cell.contentView viewWithTag:100];
+    if (!imageView) {
+        imageView = [[UIImageView alloc] initWithFrame:cell.contentView.bounds];
+        imageView.contentMode = UIViewContentModeScaleAspectFit;
+        imageView.tag = 100;
+        imageView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [cell.contentView addSubview:imageView];
+    }
     imageView.image = self.fuzzedImages[indexPath.row];
-    [cell.contentView addSubview:imageView]; // Add imageView to cell's contentView
     
     NSLog(@"Configuring cell for item at %@ with image name: %@", indexPath, self.imagePaths[indexPath.row]);
     

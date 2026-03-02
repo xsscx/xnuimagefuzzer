@@ -102,26 +102,25 @@ def analyze_subsampling_and_render_image(exr_path):
 			f"  dataWindow: {header['dataWindow']}\n"
 			f"  displayWindow: {header['displayWindow']}\n"
 			f"  lineOrder: {header['lineOrder']}\n"
-			f"  owner: {header['owner']}\n"
+			f"  owner: {header.get('owner', 'N/A')}\n"
 			f"  pixelAspectRatio: {header['pixelAspectRatio']}\n"
 			f"  screenWindowCenter: {header['screenWindowCenter']}\n"
 			f"  screenWindowWidth: {header['screenWindowWidth']}\n"
 			f"Channel Keys: {channel_keys}\n"
 			f"Channel Sizes:\n"
-			f"  BY: {channel_sizes['BY']}\n"
-			f"  RY: {channel_sizes['RY']}\n"
-			f"  Y: {channel_sizes['Y']}\n"
-			f"Channel Data Shapes:\n"
-			f"  BY: {channel_data_shapes.get('BY')}\n"
-			f"  RY: {channel_data_shapes.get('RY')}\n"
-			f"  Y: {channel_data_shapes.get('Y')}\n"
 		)
+		for ch in channel_keys:
+			if ch in channel_sizes:
+				report += f"  {ch}: {channel_sizes[ch]}\n"
+		report += f"Channel Data Shapes:\n"
+		for ch in channel_keys:
+			report += f"  {ch}: {channel_data_shapes.get(ch)}\n"
 		print(report)
 		
 		# Print expected output format
+		sizes_dict = {ch: (channel_sizes[ch][0],) for ch in channel_keys if ch in channel_sizes}
 		expected_output = (
-			f"({repr(header)}, {size}, dict_keys({channel_keys}), "
-			f"{{'BY': ({channel_sizes['BY'][0]},), 'RY': ({channel_sizes['RY'][0]},), 'Y': ({channel_sizes['Y'][0]},)}})"
+			f"({repr(header)}, {size}, dict_keys({channel_keys}), {sizes_dict})"
 		)
 		print(f"Expected Output: {expected_output}")
 		

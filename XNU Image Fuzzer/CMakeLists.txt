@@ -35,7 +35,7 @@ if(CMAKE_BUILD_TYPE MATCHES Debug)
 endif()
 
 # Define the executable with its new name and necessary source files
-add_executable(xnuimagefuzzer main.m) # Executable name changed to xnuimagefuzzer
+add_executable(xnuimagefuzzer xnuimagefuzzer.m) # Executable name changed to xnuimagefuzzer
 
 # Set the path to the Info.plist file
 # set_target_properties(xnuimagefuzzer PROPERTIES

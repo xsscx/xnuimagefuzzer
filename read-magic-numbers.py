@@ -36,7 +36,7 @@ import magic
 import urllib.parse
 
 # Setup basic logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(levelname)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 def get_file_type(magic_bytes, file_content=None):
     """
@@ -96,12 +96,10 @@ def get_file_type(magic_bytes, file_content=None):
         b'\xab\xc9\xae\x19': 'Custom ICC-Related Format',
         b'\xab\x4b\xae\x19': 'Custom ICC-Related Format',
         b'\x49\x49\xae\x19': 'Custom ICC-Related Format',
-        # New formats
+        # Additional formats
         b'\x25\x50\x44\x46': 'PDF Document',
         b'\x76\x2f\x31\x01': 'DDS Image',
         b'\x69\x63\x6e\x73': 'ICNS Icon',
-        b'\x00\x00\x00\x00': 'TGA Image',
-        b'\x52\x49\x46\x46': 'WEBP Image',
         b'\x47\x49\x46\x38': 'GIF-89a',
         b'\x49\x49\x2a\x00': 'TIFF-LE',
     }
