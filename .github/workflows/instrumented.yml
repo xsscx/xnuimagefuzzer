@@ -461,3 +461,71 @@ jobs:
           path: /tmp/fuzzed-output/
           retention-days: 14
           if-no-files-found: warn
+
+  # ── Job 2: Native clang Build + Run + Coverage ─────────────
+  # Xcode's CLANG_ENABLE_CODE_COVERAGE=YES does NOT inject
+  # -fprofile-instr-generate for Mac Catalyst. This job compiles
+  # directly with clang, producing real profraw/llvm-cov output.
+  native-coverage:
+    name: Native Coverage (clang arm64)
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Credential hardening
+        run: |
+          set -euo pipefail
+          git config --global credential.helper ""
+          unset GITHUB_TOKEN || true
+
+      - name: Show toolchain
+        run: |
+          set -euo pipefail
+          clang --version 2>&1 | sed -n '1p'
+          xcodebuild -version 2>&1 | sed -n '1p'
+          uname -m
+          xcrun llvm-profdata show --version 2>&1 | sed -n '1p'
+
+      - name: Build + Run + Coverage
+        run: |
+          set -euo pipefail
+          .github/scripts/build-native.sh 2>&1 | tee /tmp/build-native.log
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Native Coverage (clang arm64)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/coverage-report/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # Report sanitizer findings
+          ASAN_HITS=$(grep -c "ASAN findings:" /tmp/build-native.log 2>/dev/null || true)
+          UBSAN_HITS=$(grep -c "UBSAN findings:" /tmp/build-native.log 2>/dev/null || true)
+          FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ASAN findings | ${ASAN_HITS:-0} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| UBSAN findings | ${UBSAN_HITS:-0} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-coverage-report
+          path: /tmp/coverage-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload fuzzed images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: native-fuzzed-images
+          path: /tmp/fuzzed-output/
+          retention-days: 14
+          if-no-files-found: warn

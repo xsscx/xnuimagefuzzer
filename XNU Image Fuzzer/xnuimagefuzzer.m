@@ -1803,7 +1803,7 @@ NSData* generateFuzzedImageData(size_t width, size_t height, CFStringRef imageTy
     }
     
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    CGContextRef context = CGBitmapContextCreate(buffer, width, height, bitsPerComponent, bytesPerRow, colorSpace, kCGImageAlphaPremultipliedLast);
+    CGContextRef context = CGBitmapContextCreate(buffer, width, height, bitsPerComponent, bytesPerRow, colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     if (!context) {
         NSLog(@"Failed to create bitmap context in generateFuzzedImageData");
         CGColorSpaceRelease(colorSpace);
@@ -3037,7 +3037,7 @@ void createBitmapContext1BitMonochrome(CGImageRef cgImg) {
 
     // Use device gray colorspace for 1-bit monochrome (NULL colorspace may fail on some systems)
     CGColorSpaceRef graySpace = CGColorSpaceCreateDeviceGray();
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 1, bytesPerRow, graySpace, kCGImageAlphaNone);
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 1, bytesPerRow, graySpace, (CGBitmapInfo)kCGImageAlphaNone);
     CGColorSpaceRelease(graySpace);
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with 1-bit Monochrome settings");
@@ -3513,7 +3513,7 @@ void createBitmapContextCMYK(CGImageRef cgImg) {
         }
 
         CGContextRef rgbCtx = CGBitmapContextCreate(rgbData, width, height, 8, rgbBytesPerRow,
-                                                     rgbSpace, kCGImageAlphaPremultipliedLast);
+                                                     rgbSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
         CGColorSpaceRelease(rgbSpace);
         if (rgbCtx) {
             applyEnhancedFuzzingToBitmapContext(rgbData, width, height, verboseLogging);
