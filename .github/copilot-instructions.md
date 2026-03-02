@@ -3,7 +3,8 @@
 ## Project Overview
 
 XNU Image Fuzzer is a proof-of-concept iOS/macOS image fuzzing framework that generates
-fuzzed images using all 12 CGBitmapContext color space and pixel format combinations.
+fuzzed images using 15 CGBitmapContext color space and pixel format combinations (including
+CMYK, HDR Float16, and Indexed Color), plus structure-aware PNG chunk mutations.
 It exercises Apple's CoreGraphics rendering pipeline across every supported bitmap
 configuration to discover crashes, memory safety bugs, and undefined behavior.
 
@@ -95,19 +96,27 @@ LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw" \
 
 ### Core Fuzzing Pipeline
 ```
-main() → UIApplicationMain()
-  → AppDelegate → ViewController.viewDidLoad
-    → dispatch_async(background)
-      → performAllImagePermutations()
-        → for each of 12 bitmap contexts:
-            createBitmapContext*() → fill with fuzz data
-            → CGBitmapContextCreateImage()
-            → saveFuzzedImage() → Documents/
-        → loadFuzzedImagesFromDocumentsDirectory()
-        → UICollectionView reload
+main() → performAllImagePermutations()
+  → for each of 17 seed specs (8×8 to 4096×4096):
+      createBitmapContext*() → fill with fuzz data
+      → CGBitmapContextCreateImage()
+      → saveFuzzedImage(seed) → FUZZ_OUTPUT_DIR/
+      → applyPostEncodingCorruption(seed) → 6 PNG chunk-level mutations
+      → saveFuzzedImage(corrupted) → FUZZ_OUTPUT_DIR/
+      → processImage(seed, permutation) → save as PNG/JPEG/GIF/TIFF
+  → __llvm_profile_write_file() (if instrumented)
 ```
 
-### 12 Bitmap Context Types
+### Post-Encoding Corruption (Structure-Aware)
+6 PNG chunk mutation strategies applied after encoding:
+1. IHDR dimension corruption (width/height = 0 or 0xFFFF)
+2. IDAT stream truncation (50% of data removed)
+3. CRC invalidation on random chunks
+4. Chunk type mangling (swap chunk names)
+5. Extra data injection between chunks
+6. Chunk reordering (move IDAT before IHDR)
+
+### 15 Bitmap Context Types
 | # | Function | Format |
 |---|----------|--------|
 | 1 | createBitmapContextStandardRGB | RGBA premultiplied last |
@@ -122,6 +131,9 @@ main() → UIApplicationMain()
 | 10 | createBitmapContextLittleEndian | Little-endian 32-bit |
 | 11 | createBitmapContext8BitInvertedColors | Inverted 8-bit |
 | 12 | createBitmapContext32BitFloat4Component | RGBA 128-bit float |
+| 13 | createBitmapContextCMYK | CMYK with RGB fallback |
+| 14 | createBitmapContextHDRFloat16 | IEEE 754 half-precision edge cases |
+| 15 | createBitmapContextIndexedColor | 5 palette variants with corruption |
 
 ### Output Formats
 Images are saved as: PNG, JPEG, GIF, BMP, TIFF, HEIF
@@ -238,10 +250,90 @@ Cast `CGImageAlphaInfo` to `CGBitmapInfo`:
 CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast;
 ```
 
-### No images generated in CI
-The app requires `UIApplicationMain()` to run — it's a UI app, not a CLI.
-Mac Catalyst build runs the app natively with a 120s timeout.
+### Mac Catalyst app exits immediately
+Running the bare Mach-O binary directly doesn't work for Mac Catalyst UIKit apps.
+Must use `open "$APP_BUNDLE"` to properly initialize UIKit.
 
-### Coverage report empty
-Check `LLVM_PROFILE_FILE` is set before running the binary.
-Profraw files must be merged: `xcrun llvm-profdata merge -sparse *.profraw -o merged.profdata`
+### Running Mac Catalyst with env vars
+`launchctl setenv` is unreliable. Use `open --env` (macOS 13+):
+```bash
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
+     --env LLVM_PROFILE_FILE=/tmp/profraw/%m_%p.profraw \
+     "$APP_BUNDLE"
+```
+
+### Coverage report empty (no profraw)
+The app includes explicit `__llvm_profile_write_file()` and
+`__llvm_profile_set_filename()` calls (weak-linked, no-op without instrumentation).
+If profraw is still missing:
+1. Verify `LLVM_PROFILE_FILE` env var reaches the process (`open --env`)
+2. Ensure the output directory exists and is writable
+3. The app must exit cleanly (`return 0`) — not be killed by SIGTERM
+
+### SIGPIPE crash in CI
+Never pipe `xcodebuild`, `xcrun`, or Apple CLI tools through `| head`.
+Use `| sed -n '1p'` or `| sed -n '1,Np'` instead.
+
+### No images generated in CI
+Mac Catalyst build uses `open --env` to launch the app. The CI polls for
+≥80 files with a 120s timeout. If the app generates fewer than expected,
+increase the timeout or check if new permutations were added without
+updating the polling threshold.
+
+## Local Development (macOS)
+
+### Quick build + run
+```bash
+# Build
+xcodebuild build \
+  -project "XNU Image Fuzzer.xcodeproj" \
+  -scheme "XNU Image Fuzzer" \
+  -destination 'platform=macOS,variant=Mac Catalyst' \
+  -configuration Debug \
+  -derivedDataPath /tmp/DerivedData \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  GCC_TREAT_WARNINGS_AS_ERRORS=YES
+
+# Find the app bundle
+APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
+
+# Run with output directory
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
+
+# Wait for completion (check file count)
+while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do sleep 2; done
+
+# View results
+ls -la /tmp/fuzzed-output/
+```
+
+### Instrumented build + coverage
+```bash
+# Build with sanitizers
+xcodebuild build \
+  -project "XNU Image Fuzzer.xcodeproj" \
+  -scheme "XNU Image Fuzzer" \
+  -destination 'platform=macOS,variant=Mac Catalyst' \
+  -configuration Debug \
+  -derivedDataPath /tmp/DerivedData \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  CLANG_ADDRESS_SANITIZER=YES CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
+  CLANG_ENABLE_CODE_COVERAGE=YES \
+  OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
+
+# Run with coverage + sanitizers
+mkdir -p /tmp/profraw /tmp/fuzzed-output
+APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
+     --env LLVM_PROFILE_FILE=/tmp/profraw/fuzzer-%m_%p.profraw \
+     --env ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
+     "$APP"
+
+# Wait, then generate coverage report
+while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do sleep 2; done
+sleep 5  # profraw flush time
+BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
+  ! -path "*/Contents/Resources/*" | sed -n '1p')
+xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o /tmp/merged.profdata
+xcrun llvm-cov report "$BINARY" -instr-profile=/tmp/merged.profdata
+```
