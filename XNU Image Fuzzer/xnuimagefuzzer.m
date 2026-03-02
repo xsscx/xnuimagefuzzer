@@ -670,9 +670,15 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
     // Generate file name based on the context description
     NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@.%@", contextDescription, fileExtension];
     
-    // Fetch the documents directory path
-    NSString *documentsDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *filePath = [documentsDirectory stringByAppendingPathComponent:fileName];
+    // Use FUZZ_OUTPUT_DIR env var if set (for CI), otherwise use Documents directory
+    NSString *outputDirectory;
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+    if (envDir) {
+        outputDirectory = [NSString stringWithUTF8String:envDir];
+    } else {
+        outputDirectory = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    }
+    NSString *filePath = [outputDirectory stringByAppendingPathComponent:fileName];
     
     // Save the image data to the file
     BOOL success = [imageData writeToFile:filePath atomically:YES];
@@ -785,7 +791,13 @@ extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t
  */
 extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
     NSData *imageData = UIImagePNGRepresentation(image);
-    NSString *docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    NSString *docsDir;
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+    if (envDir) {
+        docsDir = [NSString stringWithUTF8String:envDir];
+    } else {
+        docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    }
     NSString *filePath = [docsDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", identifier]];
     
     if ([imageData writeToFile:filePath atomically:YES]) {
@@ -1395,25 +1407,55 @@ unsigned long hashString(const char* str) {
  * generate and process an image.
  */
 void performAllImagePermutations(void) {
-    // Define dimensions and image type for the generated image
-    size_t width = 128;
-    size_t height = 128;
-    CFStringRef imageType = (__bridge CFStringRef)UTTypePNG.identifier;
-    
-    // Generate the fuzzed image data
-    NSData *fuzzedImage = generateFuzzedImageData(width, height, imageType);
-    NSString *path = @"/tmp/fuzzed_image.png";
-    [fuzzedImage writeToFile:path atomically:YES];
-    
-    // Load the generated image
-    UIImage *image = [UIImage imageWithData:fuzzedImage];
-    if (!image) {
-        NSLog(@"Failed to load generated image from path: %@", path);
-        return;
-    }
+    // Generate 10 diverse seed images with varied dimensions and process each
+    // through a different bitmap context permutation for maximum code coverage.
+    // Permutations: 1=StandardRGB, 3=NonPremultiplied, 4=16Bit, 6=HDRFloat,
+    //   7=AlphaOnly, 8=Monochrome, 9=BigEndian, 10=LittleEndian,
+    //   11=InvertedColors, 12=32BitFloat4
+    struct { size_t width; size_t height; int permutation; } specs[] = {
+        { 64,  64,  1},  // Small square — StandardRGB
+        {128, 128,  3},  // Medium square — NonPremultipliedAlpha
+        {256, 256,  4},  // Large square — 16BitDepth
+        {100, 200,  6},  // Tall rectangle — HDRFloat
+        {200, 100,  7},  // Wide rectangle — AlphaOnly
+        { 32,  32,  8},  // Tiny square — 1BitMonochrome
+        {512, 512,  9},  // Large square — BigEndian
+        { 80, 120, 10},  // Odd aspect — LittleEndian
+        {160, 160, 11},  // Medium square — 8BitInvertedColors
+        { 96,  96, 12},  // Small square — 32BitFloat4Component
+    };
+    int count = sizeof(specs) / sizeof(specs[0]);
 
-    // Process the image with permutation -1 (all permutations)
-    processImage(image, -1);
+    CFStringRef imageType = (__bridge CFStringRef)UTTypePNG.identifier;
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+
+    for (int i = 0; i < count; i++) {
+        NSLog(@"=== Generating fuzzed image %d/%d: %zux%zu, permutation %d ===",
+              i + 1, count, specs[i].width, specs[i].height, specs[i].permutation);
+
+        NSData *fuzzedImage = generateFuzzedImageData(specs[i].width, specs[i].height, imageType);
+
+        // Save seed image
+        NSString *seedPath;
+        if (envDir) {
+            seedPath = [NSString stringWithFormat:@"%s/seed_%02d_%zux%zu.png",
+                        envDir, i + 1, specs[i].width, specs[i].height];
+        } else {
+            seedPath = [NSString stringWithFormat:@"/tmp/fuzzed_image_%d.png", i + 1];
+        }
+        [fuzzedImage writeToFile:seedPath atomically:YES];
+        NSLog(@"Seed image saved to %@", seedPath);
+
+        UIImage *image = [UIImage imageWithData:fuzzedImage];
+        if (!image) {
+            NSLog(@"Failed to load seed image %d from %@", i + 1, seedPath);
+            continue;
+        }
+
+        processImage(image, specs[i].permutation);
+        NSLog(@"=== Completed image %d/%d ===", i + 1, count);
+    }
+    NSLog(@"All %d fuzzed images generated successfully", count);
 }
 
 #pragma mark - generateFuzzedImageData
