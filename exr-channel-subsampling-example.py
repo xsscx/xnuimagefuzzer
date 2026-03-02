@@ -112,7 +112,7 @@ def analyze_subsampling_and_render_image(exr_path):
 		for ch in channel_keys:
 			if ch in channel_sizes:
 				report += f"  {ch}: {channel_sizes[ch]}\n"
-		report += f"Channel Data Shapes:\n"
+		report += "Channel Data Shapes:\n"
 		for ch in channel_keys:
 			report += f"  {ch}: {channel_data_shapes.get(ch)}\n"
 		print(report)

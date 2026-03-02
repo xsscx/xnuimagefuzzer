@@ -31,7 +31,6 @@ import logging
 import base64
 from PIL import Image, UnidentifiedImageError
 import io
-from packaging import version
 import magic
 import urllib.parse
 
@@ -101,7 +100,6 @@ def get_file_type(magic_bytes, file_content=None):
         b'\x76\x2f\x31\x01': 'DDS Image',
         b'\x69\x63\x6e\x73': 'ICNS Icon',
         b'\x47\x49\x46\x38': 'GIF-89a',
-        b'\x49\x49\x2a\x00': 'TIFF-LE',
     }
     
     # Check binary signatures

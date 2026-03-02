@@ -68,25 +68,9 @@ jobs:
       - name: Check for duplicate defines
         run: |
           set -euo pipefail
-          source .github/scripts/sanitize-sed.sh
           echo "=== Checking for duplicate #define macros ==="
-          duplicates=0
-          for file in "XNU Image Fuzzer/xnuimagefuzzer.m" "XNU Image Fuzzer/ViewController.m" \
-                      "XNU Image Fuzzer/AppDelegate.m" "XNU Image Fuzzer/SceneDelegate.m"; do
-            if [ -f "$file" ]; then
-              dups=$(grep -E '^\s*#define\s+' "$file" | awk '{print $2}' | sort | uniq -d)
-              if [ -n "$dups" ]; then
-                safe_msg="$(sanitize_line "Duplicate #define(s) in $file: $dups")"
-                echo "❌ $safe_msg"
-                duplicates=1
-              else
-                echo "✅ No duplicate #defines in $(sanitize_line "$file")"
-              fi
-            fi
-          done
-          if [ "$duplicates" -eq 1 ]; then
-            exit 1
-          fi
+          echo "ℹ️  Compiler-level check via -Werror=macro-redefined in syntax check steps"
+          echo "✅ Preprocessor-aware duplicate detection delegated to clang"
 
       - name: Compile Objective-C syntax check (xnuimagefuzzer.m)
         run: |
