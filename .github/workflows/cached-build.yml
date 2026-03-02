@@ -163,7 +163,7 @@ jobs:
             fi
           else
             echo "❌ App bundle not found at $APP_PATH"
-            find "$DERIVED_DATA" -name "*.app" -maxdepth 5 2>/dev/null | head -5
+            find "$DERIVED_DATA" -name "*.app" -maxdepth 5 2>/dev/null | sed -n '1,5p'
             exit 1
           fi
 

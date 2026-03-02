@@ -129,11 +129,11 @@ jobs:
           # Find the Mac Catalyst binary
           BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
             ! -path "*/XNU Image Fuzzer.app/Contents/Resources/*" \
-            | head -1)
+            | sed -n '1p')
 
           if [ -z "$BINARY" ]; then
             echo "❌ Binary not found in DerivedData"
-            find /tmp/DerivedData -name "*.app" -type d | head -5
+            find /tmp/DerivedData -name "*.app" -type d | sed -n '1,5p'
             exit 1
           fi
 
@@ -318,7 +318,7 @@ jobs:
             HEIGHT=$(sips -g pixelHeight "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "?")
 
             # Verify magic bytes with file(1)
-            FILETYPE=$(file -b "$f" | head -c 40)
+            FILETYPE=$(file -b "$f" | cut -c1-40)
 
             if [ "$FORMAT" != "unknown" ] && [ "$WIDTH" != "?" ] && [ "$HEIGHT" != "?" ]; then
               VALID=$((VALID + 1))
@@ -415,7 +415,7 @@ jobs:
             -instr-profile=/tmp/coverage-report/merged.profdata \
             -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
             -show-functions \
-            2>&1 | grep -E '^\S.*0\.00%' | head -30 >> "$GITHUB_STEP_SUMMARY" || echo "(all functions covered)" >> "$GITHUB_STEP_SUMMARY"
+            2>&1 | grep -E '^\S.*0\.00%' | sed -n '1,30p' >> "$GITHUB_STEP_SUMMARY" || echo "(all functions covered)" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
           echo "" >> "$GITHUB_STEP_SUMMARY"

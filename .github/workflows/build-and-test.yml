@@ -145,7 +145,7 @@ jobs:
             fi
           else
             echo "❌ App bundle not found at $APP_PATH"
-            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -maxdepth 5 2>/dev/null | head -5
+            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -maxdepth 5 2>/dev/null | sed -n '1,5p'
             exit 1
           fi
 
@@ -207,7 +207,7 @@ jobs:
             echo "Analyzer report files: $count"
             if [ "$count" -gt 0 ]; then
               echo "⚠️  Static analyzer found potential issues"
-              find /tmp/analyzer-output -name "*.plist" -exec basename {} \; | head -10
+              find /tmp/analyzer-output -name "*.plist" -exec basename {} \; | sed -n '1,10p'
             fi
           fi
           echo "✅ Analysis review complete"
@@ -246,7 +246,7 @@ jobs:
                           sys.exit(0)
           sys.exit(1)
           ")
-          SIM_UDID=$(echo "$SIM_INFO" | head -1)
+          SIM_UDID=$(echo "$SIM_INFO" | sed -n '1p')
           SIM_NAME=$(echo "$SIM_INFO" | tail -1)
           echo "sim_udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
           echo "✅ Found simulator: $SIM_NAME ($SIM_UDID)"
@@ -313,7 +313,7 @@ jobs:
             CONTAINER=$(xcrun simctl get_app_container "$SIM_UDID" cx.srd.xnuimagefuzzer data 2>/dev/null || true)
             if [ -n "$CONTAINER" ]; then
               echo "App data container: $CONTAINER"
-              find "$CONTAINER" -name "*.png" -o -name "*.jpg" -o -name "*.gif" 2>/dev/null | head -20
+              find "$CONTAINER" -name "*.png" -o -name "*.jpg" -o -name "*.gif" 2>/dev/null | sed -n '1,20p'
               # Copy any found images to output dir
               find "$CONTAINER" -name "fuzzed_*" -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
               find "$CONTAINER" -name "1Bit_*" -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true

@@ -330,7 +330,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${{ needs.build-release.outputs.version }}"
-          PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | head -2 | tail -1) || true
+          PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | sed -n '1,2p' | tail -1) || true
 
           cat > /tmp/release-notes.md <<'NOTES_EOF'
           ## XNU Image Fuzzer ${VERSION}
@@ -370,7 +370,7 @@ jobs:
             echo "" >> /tmp/release-notes.md
             echo "### 📝 Changes since ${PREV_TAG}" >> /tmp/release-notes.md
             echo "" >> /tmp/release-notes.md
-            git log "${PREV_TAG}..HEAD" --oneline --no-merges | head -30 >> /tmp/release-notes.md
+            git log "${PREV_TAG}..HEAD" --oneline --no-merges | sed -n '1,30p' >> /tmp/release-notes.md
           fi
 
       - name: Prepare release assets
