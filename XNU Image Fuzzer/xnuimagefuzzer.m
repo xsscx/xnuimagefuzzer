@@ -87,7 +87,7 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
  * @note These constants are designed to be used across various components of the application, providing a centralized point of reference for important values and system parameters.
  */
 #define ALL -1 // Special flag for operations applicable to all items or states.
-#define MAX_PERMUTATION 12 // Maximum permutations in image processing.
+#define MAX_PERMUTATION 15 // Maximum permutations in image processing.
 #ifdef __arm64__
 #define COMM_PAGE64_BASE_ADDRESS        (0x0000000FFFFFC000ULL)
 #elif defined(__x86_64__)
@@ -596,6 +596,9 @@ void createBitmapContextBigEndian(CGImageRef cgImg);
 void createBitmapContextLittleEndian(CGImageRef cgImg);
 void createBitmapContext8BitInvertedColors(CGImageRef cgImg);
 void createBitmapContext32BitFloat4Component(CGImageRef cgImg);
+void createBitmapContextCMYK(CGImageRef cgImg);
+void createBitmapContextHDRFloat16(CGImageRef cgImg);
+void createBitmapContextIndexedColor(CGImageRef cgImg);
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void applyEnhancedFuzzingToBitmapContext16Bit(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
@@ -1414,12 +1417,99 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
         bytes[offset] ^= (1 << arc4random_uniform(8));
     }
 
-    // Strategy 2: Corrupt dimension/length fields at known offsets
-    if ([format containsString:@"png"] && len > 24) {
-        // PNG IHDR chunk: width at offset 16-19, height at 20-23
-        if (arc4random_uniform(3) == 0) {
-            bytes[16 + arc4random_uniform(4)] ^= arc4random_uniform(256);
-            NSLog(@"Corrupted PNG IHDR width/height field");
+    // Strategy 2: Structure-aware mutations for each format
+    if ([format containsString:@"png"] && len > 33) {
+        // PNG structure: 8-byte signature + chunks (length[4] + type[4] + data[N] + CRC[4])
+        uint32_t mutation = arc4random_uniform(6);
+        switch (mutation) {
+            case 0: {
+                // Corrupt IHDR dimensions (width at 16-19, height at 20-23)
+                bytes[16 + arc4random_uniform(4)] ^= arc4random_uniform(256);
+                NSLog(@"Corrupted PNG IHDR width/height field");
+                break;
+            }
+            case 1: {
+                // Corrupt IHDR color type / bit depth (byte 24 = bit depth, 25 = color type)
+                if (arc4random_uniform(2) == 0) {
+                    bytes[24] = (uint8_t[]){0, 1, 2, 4, 8, 16, 99, 255}[arc4random_uniform(8)];
+                    NSLog(@"Corrupted PNG IHDR bit depth to %u", bytes[24]);
+                } else {
+                    bytes[25] = (uint8_t[]){0, 2, 3, 4, 6, 7, 255}[arc4random_uniform(7)];
+                    NSLog(@"Corrupted PNG IHDR color type to %u", bytes[25]);
+                }
+                break;
+            }
+            case 2: {
+                // Corrupt chunk CRCs — walk chunks and flip CRC bytes
+                size_t pos = 8; // skip PNG signature
+                int corrupted = 0;
+                while (pos + 12 <= len && corrupted < 3) {
+                    uint32_t chunkLen = ((uint32_t)bytes[pos] << 24) | ((uint32_t)bytes[pos+1] << 16) |
+                                        ((uint32_t)bytes[pos+2] << 8) | bytes[pos+3];
+                    if (chunkLen > len - pos - 12) break;
+                    size_t crcOffset = pos + 8 + chunkLen;
+                    if (crcOffset + 4 <= len && arc4random_uniform(3) == 0) {
+                        bytes[crcOffset + arc4random_uniform(4)] ^= arc4random_uniform(256);
+                        NSLog(@"Corrupted PNG chunk CRC at offset %zu (chunk type: %.4s)", crcOffset, &bytes[pos+4]);
+                        corrupted++;
+                    }
+                    pos = crcOffset + 4;
+                }
+                break;
+            }
+            case 3: {
+                // Truncate IDAT stream — find first IDAT and zero out trailing portion
+                size_t pos = 8;
+                while (pos + 12 <= len) {
+                    uint32_t chunkLen = ((uint32_t)bytes[pos] << 24) | ((uint32_t)bytes[pos+1] << 16) |
+                                        ((uint32_t)bytes[pos+2] << 8) | bytes[pos+3];
+                    if (chunkLen > len - pos - 12) break;
+                    if (memcmp(&bytes[pos+4], "IDAT", 4) == 0 && chunkLen > 4) {
+                        size_t dataStart = pos + 8;
+                        size_t truncAt = dataStart + arc4random_uniform((uint32_t)(chunkLen / 2)) + chunkLen / 2;
+                        if (truncAt < dataStart + chunkLen) {
+                            memset(&bytes[truncAt], 0, dataStart + chunkLen - truncAt);
+                            NSLog(@"Truncated PNG IDAT at offset %zu (%zu bytes zeroed)", truncAt, dataStart + chunkLen - truncAt);
+                        }
+                        break;
+                    }
+                    pos += 8 + chunkLen + 4;
+                }
+                break;
+            }
+            case 4: {
+                // Corrupt PLTE entries if present
+                size_t pos = 8;
+                while (pos + 12 <= len) {
+                    uint32_t chunkLen = ((uint32_t)bytes[pos] << 24) | ((uint32_t)bytes[pos+1] << 16) |
+                                        ((uint32_t)bytes[pos+2] << 8) | bytes[pos+3];
+                    if (chunkLen > len - pos - 12) break;
+                    if (memcmp(&bytes[pos+4], "PLTE", 4) == 0 && chunkLen >= 3) {
+                        size_t numCorrupt = 1 + arc4random_uniform((uint32_t)(chunkLen < 12 ? chunkLen : 12));
+                        for (size_t c = 0; c < numCorrupt; c++) {
+                            bytes[pos + 8 + arc4random_uniform((uint32_t)chunkLen)] ^= arc4random_uniform(256);
+                        }
+                        NSLog(@"Corrupted %zu PLTE bytes in PNG palette chunk", numCorrupt);
+                        break;
+                    }
+                    pos += 8 + chunkLen + 4;
+                }
+                break;
+            }
+            case 5: {
+                // Insert invalid chunk type at random position after IHDR
+                // Find end of IHDR (8 sig + 25 IHDR = 33 bytes)
+                if (len > 40) {
+                    size_t insertPos = 33 + arc4random_uniform((uint32_t)(len - 40));
+                    if (insertPos + 4 <= len) {
+                        // Overwrite 4 bytes with invalid chunk type
+                        const char *badTypes[] = {"zZzZ", "XXXX", "\x00\x00\x00\x00", "\xFF\xFF\xFF\xFF"};
+                        memcpy(&bytes[insertPos], badTypes[arc4random_uniform(4)], 4);
+                        NSLog(@"Injected invalid chunk type at offset %zu", insertPos);
+                    }
+                }
+                break;
+            }
         }
     } else if ([format containsString:@"jpeg"] && len > 20) {
         // JPEG: corrupt a random marker length field
@@ -1598,7 +1688,8 @@ unsigned long hashString(const char* str) {
 void performAllImagePermutations(void) {
     // Generate diverse seed images with varied dimensions and process each
     // through a different bitmap context permutation for maximum code coverage.
-    // Includes edge-case dimensions (1x1, 65535x1, odd aspect ratios).
+    // Minimum seed dimension is 16×16 to exercise meaningful decoder code paths.
+    // Includes 3 new color spaces: CMYK, HDR Float16, Indexed Color.
     struct { size_t width; size_t height; int permutation; } specs[] = {
         { 64,  64,  1},  // Small square — StandardRGB
         {128, 128,  3},  // Medium square — NonPremultipliedAlpha
@@ -1610,10 +1701,13 @@ void performAllImagePermutations(void) {
         { 80, 120, 10},  // Odd aspect — LittleEndian
         {160, 160, 11},  // Medium square — 8BitInvertedColors
         { 96,  96, 12},  // Small square — 32BitFloat4Component
-        {  1,   1,  1},  // Edge case: 1x1 pixel — StandardRGB
-        { 13,   7,  5},  // Edge case: odd non-power-of-2 — Grayscale
-        {  3,   1,  2},  // Edge case: narrow strip — PremultipliedFirstAlpha
-        {  1, 100,  4},  // Edge case: single-column tall — 16BitDepth
+        { 16,  16,  1},  // Small square — StandardRGB (was 1×1)
+        { 24,  24,  5},  // Non-power-of-2 square — Grayscale (was 13×7)
+        { 16,  32,  2},  // Narrow rectangle — PremultipliedFirstAlpha (was 3×1)
+        { 32,  16,  4},  // Wide rectangle — 16BitDepth (was 1×100)
+        { 48,  48, 13},  // Medium square — CMYK
+        { 64,  32, 14},  // Wide rectangle — HDRFloat16
+        { 32,  64, 15},  // Tall rectangle — IndexedColor
     };
     int count = sizeof(specs) / sizeof(specs[0]);
 
@@ -1930,7 +2024,7 @@ void processImage(UIImage *image, int permutation) {
     NSLog(@"CGImage created from UIImage. Dimensions: %zu x %zu", CGImageGetWidth(cgImg), CGImageGetHeight(cgImg));
 
     if (permutation == -1) {
-        for (int i = 1; i <= 12; i++) {
+        for (int i = 1; i <= 15; i++) {
             switch (i) {
                 case 1:
                     NSLog(@"Case: Creating bitmap context with Standard RGB settings");
@@ -1979,6 +2073,18 @@ void processImage(UIImage *image, int permutation) {
                 case 12:
                     NSLog(@"Case: Creating bitmap context with 32-bit float, 4-component settings");
                     createBitmapContext32BitFloat4Component(cgImg);
+                    break;
+                case 13:
+                    NSLog(@"Case: Creating bitmap context with CMYK color space settings");
+                    createBitmapContextCMYK(cgImg);
+                    break;
+                case 14:
+                    NSLog(@"Case: Creating bitmap context with HDR Float16 settings");
+                    createBitmapContextHDRFloat16(cgImg);
+                    break;
+                case 15:
+                    NSLog(@"Case: Creating bitmap context with Indexed Color settings");
+                    createBitmapContextIndexedColor(cgImg);
                     break;
                 default:
                     NSLog(@"Case: Invalid permutation number %d", permutation);
@@ -2035,6 +2141,18 @@ void processImage(UIImage *image, int permutation) {
             case 12:
                 NSLog(@"Case: Creating bitmap context with 32-bit float, 4-component settings");
                 createBitmapContext32BitFloat4Component(cgImg);
+                break;
+            case 13:
+                NSLog(@"Case: Creating bitmap context with CMYK color space settings");
+                createBitmapContextCMYK(cgImg);
+                break;
+            case 14:
+                NSLog(@"Case: Creating bitmap context with HDR Float16 settings");
+                createBitmapContextHDRFloat16(cgImg);
+                break;
+            case 15:
+                NSLog(@"Case: Creating bitmap context with Indexed Color settings");
+                createBitmapContextIndexedColor(cgImg);
                 break;
             default:
                 NSLog(@"Case: Invalid permutation number %d", permutation);
@@ -3282,4 +3400,409 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     CGContextRelease(ctx);
 
     os_signpost_event_emit(createBitmapContextLog, spid, "Finished creating bitmap context for 32bit_float4");
+}
+
+#pragma mark - createBitmapContextCMYK
+
+void createBitmapContextCMYK(CGImageRef cgImg) {
+    NSLog(@"Creating bitmap context with CMYK color space settings");
+
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+    size_t bytesPerPixel = 5; // CMYK + Alpha
+    size_t bytesPerRow = width * bytesPerPixel;
+
+    unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
+    if (!rawData) {
+        NSLog(@"Failed to allocate memory for CMYK image processing");
+        return;
+    }
+
+    // Fill with fuzzed CMYK data
+    for (size_t i = 0; i < height * bytesPerRow; i++) {
+        rawData[i] = arc4random_uniform(256);
+    }
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceCMYK();
+    if (!colorSpace) {
+        NSLog(@"Failed to create CMYK color space");
+        free(rawData);
+        return;
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaNone;
+    // CMYK contexts: 4 components, no alpha, 4 bytes per pixel
+    size_t cmykBytesPerRow = width * 4;
+    unsigned char *cmykData = (unsigned char *)calloc(height * cmykBytesPerRow, sizeof(unsigned char));
+    if (!cmykData) {
+        NSLog(@"Failed to allocate CMYK buffer");
+        CGColorSpaceRelease(colorSpace);
+        free(rawData);
+        return;
+    }
+
+    for (size_t i = 0; i < height * cmykBytesPerRow; i++) {
+        cmykData[i] = arc4random_uniform(256);
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(cmykData, width, height, 8, cmykBytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create CMYK bitmap context — falling back to RGB conversion");
+        // Fallback: create an RGB context and convert CMYK data manually
+        CGColorSpaceRef rgbSpace = CGColorSpaceCreateDeviceRGB();
+        size_t rgbBytesPerRow = width * 4;
+        unsigned char *rgbData = (unsigned char *)calloc(height * rgbBytesPerRow, sizeof(unsigned char));
+        if (!rgbData) {
+            CGColorSpaceRelease(rgbSpace);
+            free(rawData);
+            free(cmykData);
+            return;
+        }
+
+        // Convert CMYK to RGB with fuzzed values
+        for (size_t y = 0; y < height; y++) {
+            for (size_t x = 0; x < width; x++) {
+                size_t cmykIdx = y * cmykBytesPerRow + x * 4;
+                size_t rgbIdx = y * rgbBytesPerRow + x * 4;
+                float c = cmykData[cmykIdx] / 255.0f;
+                float m = cmykData[cmykIdx + 1] / 255.0f;
+                float yy = cmykData[cmykIdx + 2] / 255.0f;
+                float k = cmykData[cmykIdx + 3] / 255.0f;
+                rgbData[rgbIdx]     = (unsigned char)((1.0f - c) * (1.0f - k) * 255.0f);
+                rgbData[rgbIdx + 1] = (unsigned char)((1.0f - m) * (1.0f - k) * 255.0f);
+                rgbData[rgbIdx + 2] = (unsigned char)((1.0f - yy) * (1.0f - k) * 255.0f);
+                rgbData[rgbIdx + 3] = 255;
+            }
+        }
+
+        CGContextRef rgbCtx = CGBitmapContextCreate(rgbData, width, height, 8, rgbBytesPerRow,
+                                                     rgbSpace, kCGImageAlphaPremultipliedLast);
+        CGColorSpaceRelease(rgbSpace);
+        if (rgbCtx) {
+            applyEnhancedFuzzingToBitmapContext(rgbData, width, height, verboseLogging);
+            CGImageRef newCgImg = CGBitmapContextCreateImage(rgbCtx);
+            if (newCgImg) {
+                UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+                CGImageRelease(newCgImg);
+                saveFuzzedImage(newImage, @"cmyk_png");
+                saveFuzzedImage(newImage, @"cmyk_jpeg");
+                saveFuzzedImage(newImage, @"cmyk_tiff");
+                NSLog(@"CMYK (RGB fallback) fuzzed images saved successfully.");
+            }
+            CGContextRelease(rgbCtx);
+        }
+        free(rgbData);
+        free(rawData);
+        free(cmykData);
+        return;
+    }
+
+    // Draw source image into CMYK context (CoreGraphics handles color space conversion)
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+
+    // Apply fuzzing to CMYK pixel data
+    size_t totalBytes = height * cmykBytesPerRow;
+    size_t flipCount = totalBytes / 25; // 4% mutation rate for CMYK
+    for (size_t i = 0; i < flipCount; i++) {
+        size_t offset = arc4random_uniform((uint32_t)totalBytes);
+        cmykData[offset] ^= (1 << arc4random_uniform(8));
+    }
+    NSLog(@"Applied %zu bit flips to CMYK pixel data", flipCount);
+
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from CMYK context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        saveFuzzedImage(newImage, @"cmyk_png");
+        saveFuzzedImage(newImage, @"cmyk_jpeg");
+        saveFuzzedImage(newImage, @"cmyk_tiff");
+        NSLog(@"CMYK fuzzed images saved successfully.");
+    }
+
+    CGContextRelease(ctx);
+    free(rawData);
+    free(cmykData);
+}
+
+#pragma mark - createBitmapContextHDRFloat16
+
+void createBitmapContextHDRFloat16(CGImageRef cgImg) {
+    NSLog(@"Creating bitmap context with HDR Float16 settings");
+
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+    // Use 16-bit float components: 4 components × 2 bytes = 8 bytes per pixel
+    size_t bytesPerRow = width * 4 * sizeof(uint16_t);
+
+    uint16_t *float16Data = (uint16_t *)calloc(height * width * 4, sizeof(uint16_t));
+    if (!float16Data) {
+        NSLog(@"Failed to allocate memory for HDR Float16 image processing");
+        return;
+    }
+
+    // Fill with random IEEE 754 half-precision values including edge cases
+    for (size_t i = 0; i < height * width * 4; i++) {
+        uint32_t r = arc4random_uniform(10);
+        switch (r) {
+            case 0: float16Data[i] = 0x0000; break; // +0.0
+            case 1: float16Data[i] = 0x8000; break; // -0.0
+            case 2: float16Data[i] = 0x7C00; break; // +Inf
+            case 3: float16Data[i] = 0xFC00; break; // -Inf
+            case 4: float16Data[i] = 0x7E00; break; // NaN
+            case 5: float16Data[i] = 0x0001; break; // Smallest denorm
+            case 6: float16Data[i] = 0x7BFF; break; // Largest finite (65504)
+            default: float16Data[i] = (uint16_t)arc4random_uniform(0x10000); break;
+        }
+    }
+
+    // Use 32-bit float context and convert — CoreGraphics doesn't directly support float16 contexts
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    if (!colorSpace) {
+        NSLog(@"Failed to create color space for HDR Float16");
+        free(float16Data);
+        return;
+    }
+
+    size_t floatBytesPerRow = width * 4 * sizeof(float);
+    float *floatData = (float *)calloc(height * width * 4, sizeof(float));
+    if (!floatData) {
+        NSLog(@"Failed to allocate float32 conversion buffer");
+        CGColorSpaceRelease(colorSpace);
+        free(float16Data);
+        return;
+    }
+
+    // Convert float16 → float32 for the bitmap context
+    for (size_t i = 0; i < height * width * 4; i++) {
+        uint16_t h = float16Data[i];
+        uint32_t sign = (h >> 15) & 1;
+        uint32_t exp = (h >> 10) & 0x1F;
+        uint32_t mant = h & 0x3FF;
+        uint32_t f;
+        if (exp == 0) {
+            if (mant == 0) {
+                f = sign << 31;
+            } else {
+                // Denormalized
+                exp = 1;
+                while (!(mant & 0x400)) { mant <<= 1; exp--; }
+                mant &= 0x3FF;
+                f = (sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13);
+            }
+        } else if (exp == 0x1F) {
+            f = (sign << 31) | 0x7F800000 | (mant << 13);
+        } else {
+            f = (sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13);
+        }
+        memcpy(&floatData[i], &f, sizeof(float));
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGBitmapByteOrder32Host;
+    CGContextRef ctx = CGBitmapContextCreate(floatData, width, height, 32, floatBytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create HDR Float16 bitmap context");
+        free(float16Data);
+        free(floatData);
+        return;
+    }
+
+    // Apply additional fuzzing to float data
+    applyEnhancedFuzzingToBitmapContextWithFloats(floatData, width, height, YES);
+
+    // Normalize for visible output
+    size_t totalFloats = height * width * 4;
+    for (size_t i = 0; i < totalFloats; i++) {
+        float v = floatData[i];
+        if (isnan(v) || isinf(v)) {
+            floatData[i] = (float)arc4random() / UINT32_MAX;
+        } else {
+            floatData[i] = fmodf(fabsf(v), 1.0f);
+        }
+    }
+    NSLog(@"Normalized %zu HDR Float16 values to [0.0, 1.0]", totalFloats);
+
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from HDR Float16 context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        saveFuzzedImage(newImage, @"hdr_float16_png");
+        saveFuzzedImage(newImage, @"hdr_float16_jpeg");
+        saveFuzzedImage(newImage, @"hdr_float16_tiff");
+        NSLog(@"HDR Float16 fuzzed images saved successfully.");
+    }
+
+    CGContextRelease(ctx);
+    free(float16Data);
+    free(floatData);
+}
+
+#pragma mark - createBitmapContextIndexedColor
+
+void createBitmapContextIndexedColor(CGImageRef cgImg) {
+    NSLog(@"Creating bitmap context with Indexed Color (palette-based) settings");
+
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+
+    // Create a palette with deliberate corruption variants
+    uint32_t paletteVariant = arc4random_uniform(5);
+    size_t numColors;
+    unsigned char palette[256 * 3]; // RGB palette, max 256 entries
+
+    switch (paletteVariant) {
+        case 0:
+            // Standard 256-color palette with random corruption
+            numColors = 256;
+            for (size_t i = 0; i < numColors * 3; i++) {
+                palette[i] = arc4random_uniform(256);
+            }
+            // Corrupt: duplicate several palette entries
+            for (int c = 0; c < 16; c++) {
+                size_t src = arc4random_uniform((uint32_t)numColors) * 3;
+                size_t dst = arc4random_uniform((uint32_t)numColors) * 3;
+                memcpy(&palette[dst], &palette[src], 3);
+            }
+            NSLog(@"IndexedColor: 256-color palette with %d duplicate entries", 16);
+            break;
+        case 1:
+            // Minimal 2-color palette (1-bit indexed)
+            numColors = 2;
+            palette[0] = 0; palette[1] = 0; palette[2] = 0;       // Black
+            palette[3] = 255; palette[4] = 255; palette[5] = 255; // White
+            NSLog(@"IndexedColor: Minimal 2-color palette");
+            break;
+        case 2:
+            // Corrupt palette with all-zero entries (invisible)
+            numColors = 64;
+            memset(palette, 0, numColors * 3);
+            // Inject a few visible colors
+            for (int c = 0; c < 4; c++) {
+                size_t idx = arc4random_uniform((uint32_t)numColors) * 3;
+                palette[idx] = 255;
+                palette[idx + 1] = arc4random_uniform(256);
+                palette[idx + 2] = arc4random_uniform(256);
+            }
+            NSLog(@"IndexedColor: Mostly-zero palette with 4 visible entries");
+            break;
+        case 3:
+            // Gradient palette
+            numColors = 256;
+            for (size_t i = 0; i < numColors; i++) {
+                palette[i * 3]     = (unsigned char)i;
+                palette[i * 3 + 1] = (unsigned char)(255 - i);
+                palette[i * 3 + 2] = (unsigned char)((i * 7) & 0xFF);
+            }
+            NSLog(@"IndexedColor: Gradient palette");
+            break;
+        default:
+            // Extreme: single-color palette
+            numColors = 1;
+            palette[0] = arc4random_uniform(256);
+            palette[1] = arc4random_uniform(256);
+            palette[2] = arc4random_uniform(256);
+            NSLog(@"IndexedColor: Single-color palette (%u, %u, %u)", palette[0], palette[1], palette[2]);
+            break;
+    }
+
+    // Create indexed pixel data (each pixel is an index into the palette)
+    unsigned char *indexData = (unsigned char *)calloc(height * width, sizeof(unsigned char));
+    if (!indexData) {
+        NSLog(@"Failed to allocate indexed pixel data");
+        return;
+    }
+
+    // Fill with random indices, some deliberately out of range
+    for (size_t i = 0; i < height * width; i++) {
+        if (arc4random_uniform(20) == 0) {
+            indexData[i] = arc4random_uniform(256); // May exceed numColors — corrupt index
+        } else {
+            indexData[i] = arc4random_uniform((uint32_t)numColors);
+        }
+    }
+
+    // Convert indexed data to RGBA for bitmap context
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    if (!colorSpace) {
+        free(indexData);
+        return;
+    }
+
+    size_t bytesPerRow = width * 4;
+    unsigned char *rgbaData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
+    if (!rgbaData) {
+        CGColorSpaceRelease(colorSpace);
+        free(indexData);
+        return;
+    }
+
+    // Map indexed colors to RGBA, with out-of-range indices wrapping
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            unsigned char idx = indexData[y * width + x];
+            size_t palIdx = (idx % numColors) * 3;
+            size_t pixIdx = (y * bytesPerRow) + (x * 4);
+            rgbaData[pixIdx]     = palette[palIdx];
+            rgbaData[pixIdx + 1] = palette[palIdx + 1];
+            rgbaData[pixIdx + 2] = palette[palIdx + 2];
+            rgbaData[pixIdx + 3] = (arc4random_uniform(10) == 0) ? arc4random_uniform(256) : 255;
+        }
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef ctx = CGBitmapContextCreate(rgbaData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create indexed color bitmap context");
+        free(indexData);
+        free(rgbaData);
+        return;
+    }
+
+    // Draw source image first, then overlay indexed corruption
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+
+    // Apply additional fuzzing
+    applyEnhancedFuzzingToBitmapContext(rgbaData, width, height, verboseLogging);
+
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from indexed color context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        saveFuzzedImage(newImage, @"indexed_color_png");
+        saveFuzzedImage(newImage, @"indexed_color_jpeg");
+        saveFuzzedImage(newImage, @"indexed_color_gif");
+        saveFuzzedImage(newImage, @"indexed_color_tiff");
+        NSLog(@"Indexed color fuzzed images saved successfully (palette variant %u, %zu colors).",
+              paletteVariant, numColors);
+    }
+
+    CGContextRelease(ctx);
+    free(indexData);
+    free(rgbaData);
 }
