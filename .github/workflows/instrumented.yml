@@ -218,6 +218,67 @@ jobs:
           echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Profraw files | ${PROFRAW_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Validate output quality
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Output Quality Validation" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          TOTAL=0
+          VALID=0
+          INVALID=0
+          ZERO_SIZE=0
+
+          echo "| File | Size | Format | Dimensions | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|------|--------|------------|--------|" >> "$GITHUB_STEP_SUMMARY"
+
+          for f in /tmp/fuzzed-output/*; do
+            [ -f "$f" ] || continue
+            TOTAL=$((TOTAL + 1))
+            NAME=$(basename "$f")
+            SIZE=$(stat -f%z "$f" 2>/dev/null || stat --printf="%s" "$f" 2>/dev/null || echo "0")
+
+            if [ "$SIZE" -eq 0 ]; then
+              ZERO_SIZE=$((ZERO_SIZE + 1))
+              INVALID=$((INVALID + 1))
+              echo "| $NAME | 0 B | — | — | ❌ Empty |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # Use macOS sips for format/dimensions
+            FORMAT=$(sips -g format "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "unknown")
+            WIDTH=$(sips -g pixelWidth "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "?")
+            HEIGHT=$(sips -g pixelHeight "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "?")
+
+            # Verify magic bytes with file(1)
+            FILETYPE=$(file -b "$f" | head -c 40)
+
+            if [ "$FORMAT" != "unknown" ] && [ "$WIDTH" != "?" ] && [ "$HEIGHT" != "?" ]; then
+              VALID=$((VALID + 1))
+              STATUS="✅ Valid"
+            else
+              INVALID=$((INVALID + 1))
+              STATUS="⚠️ $FILETYPE"
+            fi
+
+            SIZE_H=$(numfmt --to=iec "$SIZE" 2>/dev/null || echo "${SIZE} B")
+            echo "| $NAME | $SIZE_H | $FORMAT | ${WIDTH}×${HEIGHT} | $STATUS |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Total files | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Valid images | $VALID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Invalid/unknown | $INVALID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Zero-size files | $ZERO_SIZE |" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "⚠️ No fuzzed images produced — fuzzer may not have run long enough" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Generate coverage report
         run: |
           set -euo pipefail
