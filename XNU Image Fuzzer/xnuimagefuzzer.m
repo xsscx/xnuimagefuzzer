@@ -758,17 +758,19 @@ NSData* UIImageGIFRepresentation(UIImage *image) {
  * @endcode
  */
 extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t height) {
-    size_t bytesPerRow = (width + 7) / 8; // Calculate the bytes per row for 1bpp
-    unsigned char threshold = 127; // Midpoint threshold for black/white conversion
+    size_t bytesPerRow = (width + 7) / 8;
 
+    // The 1-bit context data is already packed (1 bit per pixel).
+    // Apply fuzzing by randomly flipping bits to exercise edge cases.
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             size_t byteIndex = y * bytesPerRow + x / 8;
-            unsigned char pixelValue = rawData[y * width + x]; // Assuming rawData is in a format where each pixel is a byte
-            unsigned char bit = (pixelValue > threshold) ? 1 : 0; // Apply threshold
+            unsigned char bitPos = 7 - (x % 8);
 
-            rawData[byteIndex] &= ~(1 << (7 - (x % 8))); // Clear the bit
-            rawData[byteIndex] |= (bit << (7 - (x % 8))); // Set the bit based on threshold
+            // Flip ~25% of bits randomly for fuzzing variation
+            if (arc4random_uniform(4) == 0) {
+                rawData[byteIndex] ^= (1 << bitPos);
+            }
         }
     }
 }
@@ -2398,7 +2400,20 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
         NSLog(@"Detected unchanged 0x41 pattern in %zu places.", unchangedCount);
     }
     NSLog(@"Detected changes in %zu places.", changedCount);
-    
+
+    // Normalize float values to [0.0, 1.0] so saved images have visible variation.
+    // Without this, NaN/Infinity/FLT_MAX from fuzzing clamp to uniform black.
+    for (size_t i = 0; i < totalFloats; i++) {
+        float v = rawData[i];
+        if (isnan(v) || isinf(v)) {
+            rawData[i] = (float)arc4random() / UINT32_MAX;
+        } else {
+            v = fmodf(fabsf(v), 1.0f);
+            rawData[i] = v;
+        }
+    }
+    NSLog(@"Normalized %zu float values to [0.0, 1.0] for visible output", totalFloats);
+
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
     if (!newCgImg) {
         NSLog(@"Failed to create CGImage from HDR context");
@@ -2554,7 +2569,11 @@ void createBitmapContext1BitMonochrome(CGImageRef cgImg) {
     size_t height = CGImageGetHeight(cgImg);
     // Calculate bytes per row for 1 bit per pixel, rounded up to the nearest byte
     size_t bytesPerRow = (width + 7) / 8; // Round up to account for partial bytes
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 1, bytesPerRow, NULL, kCGImageAlphaNone);
+
+    // Use device gray colorspace for 1-bit monochrome (NULL colorspace may fail on some systems)
+    CGColorSpaceRef graySpace = CGColorSpaceCreateDeviceGray();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 1, bytesPerRow, graySpace, kCGImageAlphaNone);
+    CGColorSpaceRelease(graySpace);
     if (!ctx) {
         NSLog(@"Failed to create bitmap context with 1-bit Monochrome settings");
         return;
@@ -2911,8 +2930,20 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
 
     NSLog(@"Applying enhanced fuzzing logic to the bitmap context");
-    // Placeholder for enhanced fuzzing logic application. Implement this function based on your fuzzing requirements.
-    applyEnhancedFuzzingToBitmapContextWithFloats((float*)CGBitmapContextGetData(ctx), width, height, YES);
+    float *floatData = (float*)CGBitmapContextGetData(ctx);
+    applyEnhancedFuzzingToBitmapContextWithFloats(floatData, width, height, YES);
+
+    // Normalize float values to [0.0, 1.0] so saved images have visible variation
+    size_t totalFloats = height * width * 4;
+    for (size_t i = 0; i < totalFloats; i++) {
+        float v = floatData[i];
+        if (isnan(v) || isinf(v)) {
+            floatData[i] = (float)arc4random() / UINT32_MAX;
+        } else {
+            floatData[i] = fmodf(fabsf(v), 1.0f);
+        }
+    }
+    NSLog(@"Normalized %zu float values to [0.0, 1.0] for visible output", totalFloats);
 
     CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
     if (!newCgImg) {
