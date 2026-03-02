@@ -1,0 +1,336 @@
+###############################################################
+#
+# Intent: xnuimagefuzzer-instrumented
+#
+# Build the fuzzer natively on macOS (Mac Catalyst) with
+# AddressSanitizer, UndefinedBehaviorSanitizer, and code
+# coverage instrumentation. Run the fuzzer directly on macOS
+# and generate coverage reports for improving test coverage.
+#
+# Produces:
+#   - ASAN+UBSAN instrumented macOS binary
+#   - Code coverage reports (llvm-cov text + HTML + lcov)
+#   - Sanitizer findings report
+#   - Fuzzed images generated under sanitizers
+#
+# Security hardening (iccDEV patterns):
+#   - Pinned action SHAs
+#   - Least-privilege permissions
+#   - persist-credentials: false
+#   - BASH_ENV=/dev/null
+#   - No user-controllable inputs in run: blocks
+#   - Concurrency control with cancel-in-progress
+#
+###############################################################
+
+name: xnuimagefuzzer-instrumented
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instrumented-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASH_ENV: /dev/null
+  SCHEME: "XNU Image Fuzzer"
+  PROJECT: "XNU Image Fuzzer.xcodeproj"
+
+defaults:
+  run:
+    shell: bash --noprofile --norc {0}
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - '**/*.c'
+      - '**/*.swift'
+      - '**/*.plist'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - '**/*.c'
+      - '**/*.swift'
+  workflow_dispatch:
+
+jobs:
+  # ── Job 1: Instrumented macOS Build + Run + Coverage ───────
+  instrumented-macos:
+    name: macOS (ASAN+UBSAN+Coverage)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Credential hardening
+        run: |
+          set -euo pipefail
+          git config --global credential.helper ""
+          unset GITHUB_TOKEN || true
+
+      - name: Show toolchain
+        run: |
+          set -euo pipefail
+          clang --version | head -2
+          xcodebuild -version
+          echo "---"
+          uname -m
+          sw_vers -productVersion
+          echo "LLVM tools:"
+          xcrun llvm-profdata show --version 2>&1 | head -1 || echo "llvm-profdata available"
+          xcrun llvm-cov show --version 2>&1 | head -1 || echo "llvm-cov available"
+
+      - name: Build Mac Catalyst with ASAN + UBSAN + Coverage
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS,variant=Mac Catalyst' \
+            -configuration Debug \
+            -derivedDataPath /tmp/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
+            CLANG_ADDRESS_SANITIZER=YES \
+            CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
+            CLANG_ENABLE_CODE_COVERAGE=YES \
+            GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
+            OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer' \
+            2>&1 | tee /tmp/xcodebuild-instrumented.log
+          echo "✅ Mac Catalyst instrumented build succeeded"
+
+          echo "## Instrumented Build (Mac Catalyst)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Platform | macOS (Mac Catalyst) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AddressSanitizer | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| UndefinedBehaviorSanitizer | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Code Coverage | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Frame Pointers | ✅ Preserved |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Debug Symbols | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Locate binary
+        id: locate
+        run: |
+          set -euo pipefail
+          # Find the Mac Catalyst binary
+          BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
+            ! -path "*/XNU Image Fuzzer.app/Contents/Resources/*" \
+            | head -1)
+
+          if [ -z "$BINARY" ]; then
+            echo "❌ Binary not found in DerivedData"
+            find /tmp/DerivedData -name "*.app" -type d | head -5
+            exit 1
+          fi
+
+          echo "binary=$BINARY" >> "$GITHUB_OUTPUT"
+          APP_DIR=$(dirname "$BINARY")
+          echo "app_dir=$APP_DIR" >> "$GITHUB_OUTPUT"
+          file "$BINARY"
+          echo "✅ Located: $BINARY"
+
+      - name: Static analysis
+        run: |
+          set -euo pipefail
+          xcodebuild analyze \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination 'platform=macOS,variant=Mac Catalyst' \
+            -configuration Debug \
+            -derivedDataPath /tmp/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            CLANG_ADDRESS_SANITIZER=YES \
+            CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
+            CLANG_ANALYZER_OUTPUT=text \
+            CLANG_ANALYZER_OUTPUT_DIR=/tmp/analyzer-output \
+            RUN_CLANG_STATIC_ANALYZER=YES \
+            2>&1 | tee /tmp/xcodebuild-analyze.log
+
+          WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Static Analysis" >> "$GITHUB_STEP_SUMMARY"
+          echo "Warnings: $WARNINGS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run fuzzer under sanitizers with coverage
+        run: |
+          set -euo pipefail
+          BINARY="${{ steps.locate.outputs.binary }}"
+          mkdir -p /tmp/profraw /tmp/sanitizer-logs /tmp/fuzzed-output
+
+          export FUZZ_OUTPUT_DIR="/tmp/fuzzed-output"
+          export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:log_path=/tmp/sanitizer-logs/asan"
+          export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer-logs/ubsan"
+          export LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw"
+
+          echo "🔨 Running instrumented fuzzer on macOS..."
+          timeout 120 "$BINARY" 2>&1 | tee /tmp/fuzzer-output.log || EXIT=$?
+          echo "Exit code: ${EXIT:-0}"
+
+          # Count outputs
+          FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
+          PROFRAW_COUNT=$(find /tmp/profraw -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "Generated $FILE_COUNT fuzzed images, $PROFRAW_COUNT profraw files"
+
+          # Report sanitizer findings
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Sanitizer Findings" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          ASAN_COUNT=0
+          UBSAN_COUNT=0
+          if ls /tmp/sanitizer-logs/asan.* 1>/dev/null 2>&1; then
+            ASAN_COUNT=$(grep -c "ERROR: AddressSanitizer" /tmp/sanitizer-logs/asan.* 2>/dev/null || echo "0")
+            echo "### AddressSanitizer" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            head -100 /tmp/sanitizer-logs/asan.* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if ls /tmp/sanitizer-logs/ubsan.* 1>/dev/null 2>&1; then
+            UBSAN_COUNT=$(grep -c "runtime error:" /tmp/sanitizer-logs/ubsan.* 2>/dev/null || echo "0")
+            echo "### UndefinedBehaviorSanitizer" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            head -100 /tmp/sanitizer-logs/ubsan.* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ASAN findings | ${ASAN_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| UBSAN findings | ${UBSAN_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Profraw files | ${PROFRAW_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate coverage report
+        run: |
+          set -euo pipefail
+          BINARY="${{ steps.locate.outputs.binary }}"
+          mkdir -p /tmp/coverage-report
+
+          PROFRAW_COUNT=$(find /tmp/profraw -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$PROFRAW_COUNT" -eq 0 ]; then
+            echo "⚠️  No profraw files — coverage data not generated"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "No profraw files collected during runtime." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          echo "Merging $PROFRAW_COUNT profraw files..."
+          xcrun llvm-profdata merge -sparse \
+            /tmp/profraw/*.profraw \
+            -o /tmp/coverage-report/merged.profdata
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Code Coverage Report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          # Text summary
+          echo "### Coverage Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          xcrun llvm-cov report \
+            "$BINARY" \
+            -instr-profile=/tmp/coverage-report/merged.profdata \
+            -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
+            2>&1 | tee /tmp/coverage-report/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          # HTML report
+          xcrun llvm-cov show \
+            "$BINARY" \
+            -instr-profile=/tmp/coverage-report/merged.profdata \
+            -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
+            -format=html \
+            -output-dir=/tmp/coverage-report/html \
+            2>&1 || echo "HTML report generation failed (non-fatal)"
+
+          # LCOV export
+          xcrun llvm-cov export \
+            "$BINARY" \
+            -instr-profile=/tmp/coverage-report/merged.profdata \
+            -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
+            -format=lcov \
+            > /tmp/coverage-report/coverage.lcov \
+            2>&1 || echo "LCOV export failed (non-fatal)"
+
+          # Annotated source
+          xcrun llvm-cov show \
+            "$BINARY" \
+            -instr-profile=/tmp/coverage-report/merged.profdata \
+            -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
+            -format=text \
+            > /tmp/coverage-report/annotated-source.txt \
+            2>&1 || echo "Text report generation failed (non-fatal)"
+
+          # Uncovered functions for improvement guidance
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Functions Needing Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          xcrun llvm-cov report \
+            "$BINARY" \
+            -instr-profile=/tmp/coverage-report/merged.profdata \
+            -ignore-filename-regex='.*/(usr|System|DerivedData)/.*' \
+            -show-functions \
+            2>&1 | grep -E '^\S.*0\.00%' | head -30 >> "$GITHUB_STEP_SUMMARY" || echo "(all functions covered)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### How to Improve Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Download the **coverage-report** artifact" >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Open \`html/index.html\` for interactive line-by-line view" >> "$GITHUB_STEP_SUMMARY"
+          echo "3. Review \`annotated-source.txt\` for uncovered code paths" >> "$GITHUB_STEP_SUMMARY"
+          echo "4. Add inputs or permutations that exercise 0% functions above" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-report
+          path: /tmp/coverage-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload sanitizer logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sanitizer-logs
+          path: |
+            /tmp/sanitizer-logs/
+            /tmp/fuzzer-output.log
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload instrumented app
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xnuimagefuzzer-instrumented-app
+          path: /tmp/DerivedData/**/Build/Products/Debug-maccatalyst/XNU Image Fuzzer.app
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload fuzzed images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzzed-images-instrumented
+          path: /tmp/fuzzed-output/
+          retention-days: 14
+          if-no-files-found: warn
