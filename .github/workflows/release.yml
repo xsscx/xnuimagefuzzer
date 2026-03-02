@@ -88,10 +88,10 @@ jobs:
         id: xcode
         run: |
           set -euo pipefail
-          XCODE_VERSION=$(xcodebuild -version | head -1)
+          XCODE_VERSION=$(xcodebuild -version 2>&1 | sed -n '1p')
           echo "xcode_version=${XCODE_VERSION}" >> "$GITHUB_OUTPUT"
           echo "${XCODE_VERSION}"
-          xcrun simctl list runtimes | head -5
+          xcrun simctl list runtimes 2>&1 | sed -n '1,5p'
 
       - name: Build for iOS Simulator (Release)
         run: |

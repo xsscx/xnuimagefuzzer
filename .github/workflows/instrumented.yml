@@ -80,14 +80,14 @@ jobs:
       - name: Show toolchain
         run: |
           set -euo pipefail
-          clang --version | head -2
+          clang --version 2>&1 | sed -n '1,2p'
           xcodebuild -version
           echo "---"
           uname -m
           sw_vers -productVersion
           echo "LLVM tools:"
-          xcrun llvm-profdata show --version 2>&1 | head -1 || echo "llvm-profdata available"
-          xcrun llvm-cov show --version 2>&1 | head -1 || echo "llvm-cov available"
+          xcrun llvm-profdata show --version 2>&1 | sed -n '1p' || echo "llvm-profdata available"
+          xcrun llvm-cov show --version 2>&1 | sed -n '1p' || echo "llvm-cov available"
 
       - name: Build Mac Catalyst with ASAN + UBSAN + Coverage
         run: |
