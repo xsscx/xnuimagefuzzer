@@ -348,6 +348,154 @@ while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do slee
 ls -la /tmp/fuzzed-output/
 ```
 
+### CoreGraphics debug environment variables
+For verbose CoreGraphics/Quartz diagnostics during local fuzzing, export
+these Apple-private debug env vars. They surface internal CG errors,
+backtraces, color conversion details, and memory allocation info that
+would otherwise be silent:
+```bash
+# CoreGraphics verbose diagnostics
+export CG_VERBOSE=1
+export CG_INFO=1
+export CG_PDF_VERBOSE=1
+export CG_CONTEXT_SHOW_BACKTRACE=1
+export CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1
+export CG_IMAGE_SHOW_MALLOC=1
+export CG_IMAGE_LOG_FORCE=1
+export CG_LAYER_SHOW_BACKTRACE=1
+export CGBITMAP_CONTEXT_LOG=1
+export CGBITMAP_CONTEXT_LOG_ERRORS=1
+export CGCOLORDATAPROVIDER_VERBOSE=1
+export CG_RASTERIZER_VERBOSE=1
+export CG_VERBOSE_COPY_IMAGE_BLOCK_DATA=1
+export CG_FONT_RENDERER_VERBOSE=1
+export CG_COLOR_CONVERSION_VERBOSE=1
+export CG_POSTSCRIPT_VERBOSE=1
+
+# PDF-specific
+export CGPDF_LOG_PAGES=1
+export CGPDF_VERBOSE=1
+export CGPDF_DRAW_VERBOSE=1
+export CGPDFCONTEXT_VERBOSE=1
+
+# QuartzCore / Core Animation
+export QuartzCoreDebugEnabled=1
+export CI_PRINT_TREE=1
+```
+
+When running via `open --env`, pass each var individually:
+```bash
+open --env CG_VERBOSE=1 --env CGBITMAP_CONTEXT_LOG=1 \
+     --env CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1 \
+     --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
+```
+
+### macOS malloc debugging
+Apple's libmalloc has built-in guards that catch heap corruption, use-after-free,
+and buffer overruns independent of ASAN. Useful when running without sanitizers
+or to cross-validate ASAN findings:
+```bash
+# Heap corruption detection
+export MallocGuardEdges=1          # Guard pages at heap block edges
+export MallocDoNotProtectPrelude=1 # Don't guard before block (detect overruns)
+export MallocDoNotProtectPostlude=1 # Don't guard after block (detect underruns)
+export MallocScribble=1            # Fill freed memory with 0x55, alloc with 0xAA
+export MallocCheckHeapStart=100    # Start heap validation after N allocs
+export MallocCheckHeapEach=100     # Validate heap every N allocs
+export MallocStackLogging=1        # Record stack traces for allocs (use with leaks/malloc_history)
+export MallocStackLoggingNoCompact=1 # Full stack logging (not compacted)
+
+# Crash on error instead of continuing
+export MallocErrorAbort=1
+export MallocCorruptionAbort=1
+```
+
+Post-mortem analysis with malloc stack logging:
+```bash
+# After a crash, use malloc_history to find the allocation
+malloc_history <pid> <address>
+
+# Or use leaks(1) for live process
+leaks --atExit -- /tmp/xnuimagefuzzer
+```
+
+### Objective-C runtime debugging
+```bash
+# Zombie objects — detect use-after-release (messages to freed objects)
+export NSZombieEnabled=YES
+export NSDeallocateZombies=NO      # Keep zombies around (don't re-free)
+
+# Autorelease pool debugging
+export OBJC_DEBUG_POOL_ALLOCATION=YES
+export OBJC_DEBUG_MISSING_POOLS=YES
+
+# Log method dispatch (extremely verbose — use sparingly)
+# export OBJC_PRINT_EXCEPTIONS=YES
+# export OBJC_PRINT_EXCEPTION_THROW=YES
+# export NSObjCMessageLoggingEnabled=YES
+```
+
+### ASAN + UBSAN tuning for image fuzzing
+```bash
+# ASAN — recommended settings for image fuzzer
+export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_odr_violation=0:alloc_dealloc_mismatch=0"
+
+# UBSAN — catch everything
+export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:silence_unsigned_overflow=1"
+
+# TSAN (if building with -fsanitize=thread instead)
+# export TSAN_OPTIONS="halt_on_error=0:second_deadlock_stack=1"
+```
+
+### DYLD debugging (dynamic linker)
+```bash
+# Show library load order (helps diagnose missing frameworks)
+export DYLD_PRINT_LIBRARIES=1
+
+# Show search paths for frameworks
+export DYLD_PRINT_SEARCHING=1
+
+# Insert custom dylibs (e.g. libgmalloc for Guard Malloc)
+# export DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib
+
+# Note: SIP-protected binaries ignore DYLD_* vars.
+# Native clang builds are NOT SIP-protected, so these work.
+```
+
+### Guard Malloc (libgmalloc)
+Extreme heap protection — each allocation gets its own VM page with guard pages.
+Catches single-byte overruns that ASAN might miss but runs 100x slower:
+```bash
+# Via DYLD (native clang builds only — not SIP-protected)
+DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib /tmp/xnuimagefuzzer
+
+# Or via env var
+export MALLOC_PROTECT_BEFORE=1  # Guard page before allocation (catch underruns)
+# Default: guard page after allocation (catch overruns)
+```
+
+### Crash report collection
+```bash
+# macOS crash reports land here:
+ls ~/Library/Logs/DiagnosticReports/
+
+# For immediate crashes, use lldb:
+lldb -- /tmp/xnuimagefuzzer
+(lldb) env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output
+(lldb) env ASAN_OPTIONS=detect_leaks=0:halt_on_error=1
+(lldb) run
+# On crash: bt, frame variable, register read
+```
+
+### ImageIO / image format debugging
+```bash
+# Force ImageIO to log decode errors
+export IMAGEIO_DEBUG=1
+
+# CGImageSource verbose logging
+export CG_IMAGE_LOG_FORCE=1
+```
+
 ### Instrumented build + coverage (native clang — recommended)
 ```bash
 # The build script handles everything:
