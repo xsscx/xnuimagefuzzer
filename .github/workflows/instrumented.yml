@@ -187,8 +187,11 @@ jobs:
 
           # Launch via 'open' — properly initializes UIKit for Mac Catalyst
           # (Running the bare Mach-O binary directly exits immediately)
-          open "$APP_BUNDLE"
-          echo "✅ App launched, waiting for fuzzing to complete..."
+          # 'open' blocks until the app exits; background + disown so script continues
+          open "$APP_BUNDLE" &
+          OPEN_PID=$!
+          disown $OPEN_PID
+          echo "✅ App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
 
           # Poll for output files (fuzzing runs in viewDidLoad)
           for i in $(seq 1 60); do
@@ -203,16 +206,12 @@ jobs:
           # Extra time for last files to flush to disk
           sleep 3
 
-          # Gracefully quit the app so profraw files are flushed
-          osascript -e 'tell application "XNU Image Fuzzer" to quit' 2>/dev/null || true
-          sleep 2
-
-          # Force-kill if still running (osascript may not work for Mac Catalyst on CI)
+          # Kill the app directly — Mac Catalyst apps don't respond to AppleScript quit
           APP_PID=$(pgrep -f "XNU Image Fuzzer" 2>/dev/null || true)
           if [ -n "$APP_PID" ]; then
-            echo "⚠️  App still running (PID $APP_PID), force-killing..."
+            echo "Terminating app (PID $APP_PID)..."
             kill "$APP_PID" 2>/dev/null || true
-            sleep 1
+            sleep 2
           fi
 
           # Count outputs
