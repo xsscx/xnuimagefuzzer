@@ -3,17 +3,45 @@
 # Intent: xnuimagefuzzer-codeql-analysis
 #
 # Run CodeQL security analysis on the Objective-C fuzzer code.
-# Security hardening modeled on iccDEV/.github/workflows/:
-#   - Pinned action SHAs
-#   - Explicit least-privilege permissions
-#   - Credential hardening
-#   - BASH_ENV=/dev/null, hardened shell
-#   - Concurrency control
-#   - persist-credentials: false on checkout
+#
+# STATUS: DISABLED — CodeQL C/C++ extractor cannot trace xcodebuild
+# on macOS 15 + Xcode 16 (SIP strips DYLD_INSERT_LIBRARIES from
+# sandboxed child processes). All runs fail with:
+#   "CodeQL detected code written in C/C++ but could not process any of it"
+# Upstream: https://github.com/github/codeql-action/issues/2506
+# TODO: Re-enable when CodeQL supports Xcode 16 tracing, or rewrite
+#       build step to use direct clang invocation.
 #
 ###############################################################
 
 name: xnuimagefuzzer-codeql-analysis
+
+# --- All triggers disabled until CodeQL/Xcode 16 issue is resolved ---
+# on:
+#   push:
+#     branches: [main, master]
+#     paths:
+#       - '**/*.m'
+#       - '**/*.h'
+#       - 'codeql-queries/**'
+#       - 'codeql-config.yml'
+#   pull_request:
+#     branches: [main, master]
+#     paths:
+#       - '**/*.m'
+#       - '**/*.h'
+#       - 'codeql-queries/**'
+#       - 'codeql-config.yml'
+#   schedule:
+#     - cron: '30 6 * * 1'
+#   workflow_dispatch:
+on:
+  workflow_dispatch:
+    inputs:
+      force_run:
+        description: 'Force run (CodeQL is currently broken with Xcode 16)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: read
@@ -29,25 +57,6 @@ env:
 defaults:
   run:
     shell: bash --noprofile --norc {0}
-
-on:
-  push:
-    branches: [main, master]
-    paths:
-      - '**/*.m'
-      - '**/*.h'
-      - 'codeql-queries/**'
-      - 'codeql-config.yml'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - '**/*.m'
-      - '**/*.h'
-      - 'codeql-queries/**'
-      - 'codeql-config.yml'
-  schedule:
-    - cron: '30 6 * * 1'
-  workflow_dispatch:
 
 jobs:
   analyze-objc:
