@@ -584,5 +584,7 @@ jobs:
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
           Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          # Pull --rebase in case remote advanced during the workflow run
+          git pull --rebase origin main
           git push
           echo "✅ Committed $FILE_COUNT fuzzed images to $DEST_DIR"
