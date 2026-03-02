@@ -54,12 +54,14 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/sysctl.h>
+#include <dlfcn.h>
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h> // For UTTypePNG
 
-// LLVM coverage runtime — flush profraw data before exit
-extern int __llvm_profile_write_file(void) __attribute__((weak));
-extern void __llvm_profile_set_filename(const char *) __attribute__((weak));
+// LLVM coverage runtime — resolved at runtime via dlsym to avoid linker errors
+// when building without -fprofile-instr-generate
+typedef int (*llvm_profile_write_file_fn)(void);
+typedef void (*llvm_profile_set_filename_fn)(const char *);
 
 #pragma mark - Verbose Logging
 
@@ -1885,9 +1887,10 @@ int main(int argc, const char * argv[]) {
         // Set LLVM coverage output path if env var is set but runtime hasn't picked it up
         // (happens with Mac Catalyst apps launched via 'open')
         const char *profFile = getenv("LLVM_PROFILE_FILE");
-        if (profFile && __llvm_profile_set_filename) {
+        llvm_profile_set_filename_fn set_fn = (llvm_profile_set_filename_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_set_filename");
+        if (profFile && set_fn) {
             NSLog(@"Setting LLVM profile file: %s", profFile);
-            __llvm_profile_set_filename(profFile);
+            set_fn(profFile);
         }
 
         // Detect if launched with user-provided command-line arguments for image processing
@@ -1911,8 +1914,9 @@ int main(int argc, const char * argv[]) {
             NSLog(@"XNU Image Fuzzer ✅ %@", currentTime);
 
             // Flush LLVM coverage data before exit
-            if (__llvm_profile_write_file) {
-                __llvm_profile_write_file();
+            llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
+            if (write_fn) {
+                write_fn();
             }
 
             return 0; // Successful completion of command-line image processing
@@ -1920,10 +1924,11 @@ int main(int argc, const char * argv[]) {
             // Perform all image permutations if no valid user-provided arguments are present
             performAllImagePermutations();
 
-            // Flush LLVM coverage data before exit (weak-linked, no-op without instrumentation)
-            if (__llvm_profile_write_file) {
+            // Flush LLVM coverage data before exit (dlsym, no-op without instrumentation)
+            llvm_profile_write_file_fn write_fn2 = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
+            if (write_fn2) {
                 NSLog(@"Flushing LLVM coverage data...");
-                __llvm_profile_write_file();
+                write_fn2();
             }
 
             return 0; // Successful completion of image permutation fuzzing
