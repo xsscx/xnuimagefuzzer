@@ -28,7 +28,7 @@ env:
   BASH_ENV: /dev/null
   SCHEME: "XNU Image Fuzzer"
   PROJECT: "XNU Image Fuzzer.xcodeproj"
-  DESTINATION: "platform=iOS Simulator,name=iPhone 16,OS=latest"
+  DESTINATION: "generic/platform=iOS Simulator"
 
 defaults:
   run:
@@ -219,26 +219,12 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
-      - name: Build for simulator
+      - name: Discover simulator
+        id: sim
         run: |
           set -euo pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            | tail -5
-          echo "✅ Build for smoke test completed"
-
-      - name: Boot simulator and install app
-        run: |
-          set -euo pipefail
-          # Find an available simulator
-          SIM_UDID=$(xcrun simctl list devices available -j \
+          # Find the first available iPhone simulator
+          SIM_INFO=$(xcrun simctl list devices available -j \
             | python3 -c "
           import json, sys
           data = json.load(sys.stdin)
@@ -247,16 +233,48 @@ jobs:
                   for d in devices:
                       if d['isAvailable'] and 'iPhone' in d['name']:
                           print(d['udid'])
+                          print(d['name'])
                           sys.exit(0)
+          # No simulators found — list what IS available
+          for runtime, devices in data['devices'].items():
+              for d in devices:
+                  if d['isAvailable']:
+                      print(d['udid'], file=sys.stderr)
+                      print(d['name'], file=sys.stderr)
           sys.exit(1)
           ")
-          echo "Selected simulator: $SIM_UDID"
+          SIM_UDID=$(echo "$SIM_INFO" | head -1)
+          SIM_NAME=$(echo "$SIM_INFO" | tail -1)
+          echo "sim_udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
+          echo "sim_name=$SIM_NAME" >> "$GITHUB_OUTPUT"
+          echo "✅ Found simulator: $SIM_NAME ($SIM_UDID)"
+
+      - name: Build for simulator
+        run: |
+          set -euo pipefail
+          SIM_DEST="platform=iOS Simulator,id=${{ steps.sim.outputs.sim_udid }}"
+          xcodebuild build \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -destination "$SIM_DEST" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            | tail -5
+          echo "✅ Build for smoke test completed"
+
+      - name: Install, launch and verify
+        run: |
+          set -euo pipefail
+          SIM_UDID="${{ steps.sim.outputs.sim_udid }}"
 
           # Boot the simulator
           xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
           echo "✅ Simulator booted"
 
-          # Find and install the app
+          # Find the built app
           BUILD_DIR=$(xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -273,18 +291,18 @@ jobs:
             xcrun simctl install "$SIM_UDID" "$APP_PATH"
             echo "✅ App installed on simulator"
           else
-            echo "❌ App bundle not found"
+            echo "❌ App bundle not found at $APP_PATH"
             exit 1
           fi
 
-          # Launch the app and let it run briefly
+          # Launch the app
           xcrun simctl launch "$SIM_UDID" cx.srd.xnuimagefuzzer
           echo "✅ App launched"
 
-          # Give it a few seconds to initialize
+          # Give it time to initialize
           sleep 5
 
-          # Check if the app is still running (didn't crash on launch)
+          # Verify it's still running (didn't crash on launch)
           if xcrun simctl get_app_container "$SIM_UDID" cx.srd.xnuimagefuzzer 2>/dev/null; then
             echo "✅ App is installed and responsive"
           else
@@ -293,8 +311,6 @@ jobs:
 
           # Terminate gracefully
           xcrun simctl terminate "$SIM_UDID" cx.srd.xnuimagefuzzer 2>/dev/null || true
-
-          # Shutdown
           xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
           echo "✅ Smoke test complete"
 
