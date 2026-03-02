@@ -183,7 +183,11 @@ jobs:
           launchctl setenv ASAN_OPTIONS "detect_leaks=0:halt_on_error=0:print_stats=1:log_path=/tmp/sanitizer-logs/asan"
           launchctl setenv UBSAN_OPTIONS "print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer-logs/ubsan"
 
+          # Wait for launchd to propagate env vars before launching
+          sleep 1
+
           echo "🔨 Launching instrumented Mac Catalyst app: $APP_BUNDLE"
+          echo "   LLVM_PROFILE_FILE=$(launchctl getenv LLVM_PROFILE_FILE 2>/dev/null || echo 'not set')"
 
           # Launch via 'open' — properly initializes UIKit for Mac Catalyst
           # (Running the bare Mach-O binary directly exits immediately)
@@ -206,13 +210,26 @@ jobs:
           # Extra time for last files to flush to disk
           sleep 3
 
-          # Kill the app directly — Mac Catalyst apps don't respond to AppleScript quit
+          # Terminate app gracefully for profraw flush:
+          # SIGINT triggers atexit() handlers (including llvm profraw writer)
+          # SIGTERM does NOT trigger atexit() — so SIGINT first, then SIGTERM fallback
           APP_PID=$(pgrep -f "XNU Image Fuzzer" 2>/dev/null || true)
           if [ -n "$APP_PID" ]; then
-            echo "Terminating app (PID $APP_PID)..."
-            kill "$APP_PID" 2>/dev/null || true
-            sleep 2
+            echo "Sending SIGINT to app (PID $APP_PID) for profraw flush..."
+            kill -INT "$APP_PID" 2>/dev/null || true
+            sleep 3
+
+            # Check if it exited
+            if kill -0 "$APP_PID" 2>/dev/null; then
+              echo "App still running, sending SIGTERM..."
+              kill "$APP_PID" 2>/dev/null || true
+              sleep 2
+            fi
           fi
+
+          # Check for profraw files
+          echo "Profraw files in /tmp/profraw/:"
+          ls -la /tmp/profraw/ 2>/dev/null || echo "  (none)"
 
           # Count outputs
           FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
