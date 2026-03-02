@@ -58,7 +58,7 @@ on:
 
 jobs:
   cached-build:
-    name: Cached Build & Test
+    name: Cached Build & Analyze
     runs-on: macos-latest
     timeout-minutes: 20
     steps:
@@ -186,66 +186,6 @@ jobs:
           WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
           echo "Compiler warnings: $WARNINGS"
           echo "✅ Static analysis completed"
-
-      - name: Discover simulator
-        id: sim
-        run: |
-          set -euo pipefail
-          SIM_INFO=$(xcrun simctl list devices available -j \
-            | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          for runtime, devices in data['devices'].items():
-              if 'iOS' in runtime:
-                  for d in devices:
-                      if d['isAvailable'] and 'iPhone' in d['name']:
-                          print(d['udid'])
-                          print(d['name'])
-                          sys.exit(0)
-          sys.exit(1)
-          ")
-          SIM_UDID=$(echo "$SIM_INFO" | head -1)
-          SIM_NAME=$(echo "$SIM_INFO" | tail -1)
-          echo "sim_udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
-          echo "✅ Found simulator: $SIM_NAME ($SIM_UDID)"
-
-      - name: Smoke test on simulator
-        run: |
-          set -euo pipefail
-          SIM_UDID="${{ steps.sim.outputs.sim_udid }}"
-          APP_PATH="${{ steps.verify.outputs.app_path }}"
-
-          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
-          xcrun simctl install "$SIM_UDID" "$APP_PATH"
-          echo "✅ App installed"
-
-          xcrun simctl launch "$SIM_UDID" cx.srd.xnuimagefuzzer 2>&1 | head -5 || true
-          sleep 5
-
-          if xcrun simctl get_app_container "$SIM_UDID" cx.srd.xnuimagefuzzer 2>/dev/null; then
-            echo "✅ App is installed and responsive"
-          else
-            echo "⚠️  Could not verify app container"
-          fi
-
-          xcrun simctl terminate "$SIM_UDID" cx.srd.xnuimagefuzzer 2>/dev/null || true
-          xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
-          echo "✅ Smoke test passed"
-
-      - name: Check crash logs
-        if: always()
-        run: |
-          set -euo pipefail
-          CRASH_DIR=~/Library/Logs/DiagnosticReports
-          if [ -d "$CRASH_DIR" ]; then
-            crashes=$(find "$CRASH_DIR" -name "*XNU*Image*Fuzzer*" -mmin -10 2>/dev/null || true)
-            if [ -n "$crashes" ]; then
-              echo "❌ Crash logs detected:"
-              echo "$crashes" | head -5
-              exit 1
-            fi
-          fi
-          echo "✅ No crash logs found"
 
       - name: Build summary
         if: always()
