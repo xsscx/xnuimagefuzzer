@@ -3435,7 +3435,7 @@ void createBitmapContextCMYK(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaNone;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaNone;
     // CMYK contexts: 4 components, no alpha, 4 bytes per pixel
     size_t cmykBytesPerRow = width * 4;
     unsigned char *cmykData = (unsigned char *)calloc(height * cmykBytesPerRow, sizeof(unsigned char));
@@ -3546,7 +3546,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
     // Use 16-bit float components: 4 components × 2 bytes = 8 bytes per pixel
-    size_t bytesPerRow = width * 4 * sizeof(uint16_t);
+    // (bytesPerRow used for float16 data sizing, float32 context uses floatBytesPerRow)
 
     uint16_t *float16Data = (uint16_t *)calloc(height * width * 4, sizeof(uint16_t));
     if (!float16Data) {
