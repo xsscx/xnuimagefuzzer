@@ -2556,8 +2556,7 @@ void createBitmapContextGrayscale(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast;
-    CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(colorSpace);
 
     if (!ctx) {

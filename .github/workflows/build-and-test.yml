@@ -95,8 +95,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            | tee /tmp/xcodebuild-debug.log \
-            | tail -20
+            2>&1 | tee /tmp/xcodebuild-debug.log
           echo "✅ Debug build succeeded"
 
       - name: Build for iOS Simulator (Release)
@@ -112,8 +111,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            | tee /tmp/xcodebuild-release.log \
-            | tail -20
+            2>&1 | tee /tmp/xcodebuild-release.log
           echo "✅ Release build succeeded"
 
       - name: Verify build artifacts
