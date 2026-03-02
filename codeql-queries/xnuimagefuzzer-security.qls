@@ -1,0 +1,12 @@
+# CodeQL Query Suite for XNU Image Fuzzer Security Research
+# Purpose: Detect memory safety, overflow, and resource management issues
+#          in Objective-C image fuzzing code
+
+- description: Security research query suite for xnuimagefuzzer
+
+# Custom security research queries
+- queries: ./unchecked-allocation.ql
+- queries: ./integer-overflow-buffer-size.ql
+- queries: ./unchecked-bitmap-context.ql
+- queries: ./unsafe-getenv-path.ql
+- queries: ./missing-cgimage-release.ql

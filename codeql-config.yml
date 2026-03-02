@@ -1,0 +1,9 @@
+name: xnuimagefuzzer-codeql-config
+queries:
+  - uses: security-extended
+  - uses: ./codeql-queries
+paths:
+  - 'XNU Image Fuzzer'
+paths-ignore:
+  - '**/__pycache__'
+  - '**/DerivedData'

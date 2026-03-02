@@ -1,0 +1,222 @@
+###############################################################
+#
+# Intent: xnuimagefuzzer-codeql-analysis
+#
+# Run CodeQL security analysis on the Objective-C fuzzer code.
+# Security hardening modeled on iccDEV/.github/workflows/:
+#   - Pinned action SHAs
+#   - Explicit least-privilege permissions
+#   - Credential hardening
+#   - BASH_ENV=/dev/null, hardened shell
+#   - Concurrency control
+#   - persist-credentials: false on checkout
+#
+###############################################################
+
+name: xnuimagefuzzer-codeql-analysis
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASH_ENV: /dev/null
+
+defaults:
+  run:
+    shell: bash --noprofile --norc {0}
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - 'codeql-queries/**'
+      - 'codeql-config.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - 'codeql-queries/**'
+      - 'codeql-config.yml'
+  schedule:
+    - cron: '30 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  analyze-objc:
+    name: CodeQL Analysis (Objective-C)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Credential hardening
+        run: |
+          set -euo pipefail
+          git config --global credential.helper ""
+          unset GITHUB_TOKEN || true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
+          config-file: codeql-config.yml
+          queries: +security-extended
+
+      - name: Build for CodeQL
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "XNU Image Fuzzer.xcodeproj" \
+            -scheme "XNU Image Fuzzer" \
+            -destination "generic/platform=iOS Simulator" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            | tail -10
+          echo "✅ Build for CodeQL completed"
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: objc-security
+          output: codeql-results
+          upload: always
+
+      - name: Generate SARIF summary
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "=== CodeQL Analysis Results ==="
+          if [ -d codeql-results ]; then
+            for sarif in codeql-results/*.sarif; do
+              [ -f "$sarif" ] || continue
+              echo "--- $(basename "$sarif") ---"
+              python3 -c "
+          import json, sys
+          with open('$sarif') as f:
+              data = json.load(f)
+          for run in data.get('runs', []):
+              results = run.get('results', [])
+              print(f'Total findings: {len(results)}')
+              for r in results[:20]:
+                  rule = r.get('ruleId', 'unknown')
+                  msg = r.get('message', {}).get('text', '')[:120]
+                  level = r.get('level', 'note')
+                  locs = r.get('locations', [{}])
+                  loc = locs[0].get('physicalLocation', {}) if locs else {}
+                  fpath = loc.get('artifactLocation', {}).get('uri', '?')
+                  line = loc.get('region', {}).get('startLine', '?')
+                  print(f'  [{level}] {rule}: {fpath}:{line} — {msg}')
+              if len(results) > 20:
+                  print(f'  ... and {len(results) - 20} more findings')
+          " 2>&1 || echo "Could not parse SARIF"
+            done
+          else
+            echo "No SARIF output directory found"
+          fi
+
+      - name: Upload SARIF as artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: codeql-sarif-results
+          path: codeql-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+  custom-queries:
+    name: Custom Security Queries
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Credential hardening
+        run: |
+          set -euo pipefail
+          git config --global credential.helper ""
+          unset GITHUB_TOKEN || true
+
+      - name: Initialize CodeQL (custom queries only)
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
+
+      - name: Build for CodeQL
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project "XNU Image Fuzzer.xcodeproj" \
+            -scheme "XNU Image Fuzzer" \
+            -destination "generic/platform=iOS Simulator" \
+            -configuration Debug \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            ONLY_ACTIVE_ARCH=YES \
+            | tail -10
+          echo "✅ Build for CodeQL completed"
+
+      - name: Run custom queries
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: custom-security
+          output: custom-results
+          upload: always
+          packs: +./codeql-queries
+
+      - name: Summarize custom query results
+        if: always()
+        run: |
+          set -euo pipefail
+          echo "=== Custom Query Results ==="
+          if [ -d custom-results ]; then
+            for sarif in custom-results/*.sarif; do
+              [ -f "$sarif" ] || continue
+              python3 -c "
+          import json
+          with open('$sarif') as f:
+              data = json.load(f)
+          for run in data.get('runs', []):
+              results = run.get('results', [])
+              print(f'Custom query findings: {len(results)}')
+              for r in results:
+                  rule = r.get('ruleId', 'unknown')
+                  msg = r.get('message', {}).get('text', '')[:150]
+                  level = r.get('level', 'note')
+                  locs = r.get('locations', [{}])
+                  loc = locs[0].get('physicalLocation', {}) if locs else {}
+                  fpath = loc.get('artifactLocation', {}).get('uri', '?')
+                  line = loc.get('region', {}).get('startLine', '?')
+                  print(f'  [{level}] {rule}: {fpath}:{line}')
+                  print(f'    {msg}')
+          " 2>&1 || echo "Could not parse SARIF"
+            done
+          else
+            echo "No custom results directory found"
+          fi
+
+      - name: Upload custom results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: codeql-custom-results
+          path: custom-results/
+          retention-days: 30
+          if-no-files-found: warn
