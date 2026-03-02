@@ -667,8 +667,15 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
         NSLog(@"Saving image as PNG");
     }
 
-    // Generate file name based on the context description
-    NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@.%@", contextDescription, fileExtension];
+    // Generate file name: strip trailing format suffix since extension is added separately
+    NSString *baseName = contextDescription;
+    for (NSString *suffix in @[@"_png", @"_jpeg", @"_jpg", @"_gif"]) {
+        if ([baseName hasSuffix:suffix]) {
+            baseName = [baseName substringToIndex:[baseName length] - [suffix length]];
+            break;
+        }
+    }
+    NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@.%@", baseName, fileExtension];
     
     // Use FUZZ_OUTPUT_DIR env var if set (for CI), otherwise use Documents directory
     NSString *outputDirectory;
