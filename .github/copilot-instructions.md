@@ -263,16 +263,26 @@ open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
 ```
 
 ### Coverage report empty (no profraw)
-The app includes explicit `__llvm_profile_write_file()` and
-`__llvm_profile_set_filename()` calls (weak-linked, no-op without instrumentation).
+The app uses `dlsym(RTLD_DEFAULT, "__llvm_profile_write_file")` to resolve
+coverage runtime symbols at runtime — this avoids linker errors on non-instrumented
+builds (iOS Simulator without `-fprofile-instr-generate`). Do NOT use
+`__attribute__((weak)) extern` for these symbols — it works on Mac Catalyst
+but fails on the iOS Simulator linker.
+
 If profraw is still missing:
 1. Verify `LLVM_PROFILE_FILE` env var reaches the process (`open --env`)
 2. Ensure the output directory exists and is writable
 3. The app must exit cleanly (`return 0`) — not be killed by SIGTERM
 
 ### SIGPIPE crash in CI
-Never pipe `xcodebuild`, `xcrun`, or Apple CLI tools through `| head`.
-Use `| sed -n '1p'` or `| sed -n '1,Np'` instead.
+Never pipe `xcodebuild`, `xcrun`, `ls`, `file`, `find`, or any Apple/BSD CLI
+tools through `| head`. They use NSFileHandle for stdout and crash with
+`NSFileHandleOperationException` (SIGABRT exit 134) or `stdout: Undefined error: 0`
+when the reader closes early. Use these alternatives:
+- `| head -N` → `| sed -n '1,Np'`
+- `| head -1` → `| sed -n '1p'`
+- `| head -cN` → `| cut -c1-N`
+- `| head -2 | tail -1` → `| sed -n '2p'`
 
 ### No images generated in CI
 Mac Catalyst build uses `open --env` to launch the app. The CI polls for

@@ -127,3 +127,35 @@ xcrun llvm-cov report "$BINARY" -instr-profile=merged.profdata
 xcrun llvm-cov show "$BINARY" -instr-profile=merged.profdata -format=html -output-dir=html/
 xcrun llvm-cov export "$BINARY" -instr-profile=merged.profdata -format=lcov > coverage.lcov
 ```
+
+## macOS CI Pitfalls
+
+### SIGPIPE Prevention
+NEVER pipe macOS/BSD tools (`ls`, `file`, `find`, `xcodebuild`, `xcrun`)
+through `| head`. Use `| sed -n` or `| cut -c` instead:
+```bash
+# ❌ Crashes on macOS — ls: stdout: Undefined error: 0
+ls -la /tmp/output/ | head -20
+
+# ✅ Safe — sed reads all input
+ls -la /tmp/output/ | sed -n '1,20p'
+
+# ❌ Crashes with NSFileHandleOperationException
+xcodebuild -version | head -1
+
+# ✅ Safe
+xcodebuild -version | sed -n '1p'
+```
+
+### LLVM Profile Symbols
+Use `dlsym()` to resolve `__llvm_profile_write_file` and
+`__llvm_profile_set_filename` at runtime. Do NOT use `__attribute__((weak))`
+extern declarations — they cause linker failures on iOS Simulator builds
+without `-fprofile-instr-generate`.
+
+### Mac Catalyst App Launch
+- Must use `open "$APP_BUNDLE"` — bare binary exits immediately
+- `open` blocks until app exits — use `open ... & ; disown $!`
+- Pass env vars via `open --env KEY=VALUE` (macOS 13+)
+- Mac Catalyst ignores `osascript quit` — use `pgrep`/`kill`
+- SIGTERM does NOT trigger `atexit()` — send SIGINT first
