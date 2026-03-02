@@ -997,7 +997,7 @@ void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, s
                     NSLog(@"Starting injection of string %zu: %s", stringIndex + 1, injectStrings[stringIndex]);
                 }
 
-                char *currentString = injectStrings[stringIndex];
+                const char *currentString = injectStrings[stringIndex];
                 size_t stringLength = strlen(currentString);
 
                 if (injectIndex < stringLength) {
@@ -2061,7 +2061,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     }
 
     // Define bitmap info with non-premultiplied alpha
-    CGBitmapInfo bitmapInfo = kCGImageAlphaNonpremultipliedLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
