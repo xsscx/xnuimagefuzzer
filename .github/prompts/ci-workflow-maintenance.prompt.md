@@ -1,0 +1,129 @@
+---
+name: CI Workflow Maintenance
+description: Guidelines for creating and maintaining secure GitHub Actions workflows
+---
+
+# CI Workflow Maintenance
+
+Standards for all GitHub Actions workflows in this repository.
+
+## Security Requirements (Non-Negotiable)
+
+### Action Pinning
+Always use full SHA pins, never version tags:
+```yaml
+# ✅ CORRECT
+uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+# ❌ WRONG
+uses: actions/checkout@v4
+```
+
+### Current Pinned SHAs
+| Action | SHA | Version |
+|--------|-----|---------|
+| checkout | `11bd71901bbe5b1630ceea73d27597364c9af683` | v4.2.2 |
+| upload-artifact | `ea165f8d65b6e75b540449e92b4886f43607fa02` | v4.6.2 |
+| cache | `5a3ec84eff668545956fd18022155c47e93e2684` | v4.2.3 |
+| download-artifact | `d3f86a106a0bac45b974a628896c90dbdf5c8093` | v4.3.0 |
+
+### Permissions
+```yaml
+permissions:
+  contents: read  # Least privilege — only escalate when needed
+```
+
+### Shell Hardening
+```yaml
+env:
+  BASH_ENV: /dev/null
+defaults:
+  run:
+    shell: bash --noprofile --norc {0}
+```
+
+### Credential Isolation
+```yaml
+- uses: actions/checkout@...
+  with:
+    persist-credentials: false
+
+- name: Credential hardening
+  run: |
+    git config --global credential.helper ""
+    unset GITHUB_TOKEN || true
+```
+
+### Input Sanitization
+NEVER use user-controllable inputs directly in `run:` blocks:
+```yaml
+# ❌ DANGEROUS — command injection
+run: echo "Branch: ${{ github.event.pull_request.head.ref }}"
+
+# ✅ SAFE — pass through env
+env:
+  BRANCH: ${{ github.event.pull_request.head.ref }}
+run: |
+  SAFE_BRANCH=$(echo "$BRANCH" | LC_ALL=C sed 's/[^A-Za-z0-9._/-]//g')
+  echo "Branch: $SAFE_BRANCH"
+```
+
+### Concurrency Control
+```yaml
+concurrency:
+  group: workflow-name-${{ github.ref }}
+  cancel-in-progress: true
+```
+
+## Build Configuration
+
+### Mac Catalyst Build
+```yaml
+- name: Build
+  run: |
+    xcodebuild build \
+      -project "XNU Image Fuzzer.xcodeproj" \
+      -scheme "XNU Image Fuzzer" \
+      -destination 'platform=macOS,variant=Mac Catalyst' \
+      -configuration Debug \
+      -derivedDataPath /tmp/DerivedData \
+      CODE_SIGN_IDENTITY="-" \
+      CODE_SIGNING_REQUIRED=NO \
+      CODE_SIGNING_ALLOWED=NO \
+      ONLY_ACTIVE_ARCH=YES \
+      GCC_TREAT_WARNINGS_AS_ERRORS=YES
+```
+
+### DerivedData Caching
+```yaml
+- uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+  with:
+    path: /tmp/DerivedData
+    key: derived-${{ runner.os }}-${{ hashFiles('**/*.m', '**/*.h', '**/*.swift') }}
+    restore-keys: derived-${{ runner.os }}-
+```
+
+## Git Identity for CI Commits
+```yaml
+- name: Configure git
+  run: |
+    git config user.name 'github-actions[bot]'
+    git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+```
+
+## Coverage Pipeline
+```yaml
+# 1. Build with coverage
+CLANG_ENABLE_CODE_COVERAGE=YES
+
+# 2. Set profraw output
+LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw"
+
+# 3. Merge
+xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o merged.profdata
+
+# 4. Report
+xcrun llvm-cov report "$BINARY" -instr-profile=merged.profdata
+xcrun llvm-cov show "$BINARY" -instr-profile=merged.profdata -format=html -output-dir=html/
+xcrun llvm-cov export "$BINARY" -instr-profile=merged.profdata -format=lcov > coverage.lcov
+```
