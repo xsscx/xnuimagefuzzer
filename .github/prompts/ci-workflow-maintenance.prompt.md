@@ -112,12 +112,33 @@ concurrency:
 ```
 
 ## Coverage Pipeline
-```yaml
-# 1. Build with coverage
-CLANG_ENABLE_CODE_COVERAGE=YES
 
-# 2. Set profraw output
-LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw"
+> **⚠️ `CLANG_ENABLE_CODE_COVERAGE=YES` does NOT work for Mac Catalyst.**
+> Xcode does not inject `-fprofile-instr-generate` for Mac Catalyst builds.
+> ASAN and coverage must be separate jobs.
+
+### ASAN+UBSAN job (xcodebuild)
+```yaml
+# Sanitizer testing only — NO coverage flags
+CLANG_ADDRESS_SANITIZER=YES
+CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES
+# Do NOT add CLANG_ENABLE_CODE_COVERAGE=YES
+```
+
+### Coverage job (native clang)
+```bash
+# 1. Build with native clang (not xcodebuild)
+.github/scripts/build-native.sh
+
+# Or manually:
+clang -arch arm64 -target arm64-apple-ios17.2-macabi \
+  -isysroot $(xcrun --show-sdk-path) \
+  -fsanitize=address,undefined \
+  -fprofile-instr-generate -fcoverage-mapping \
+  ...
+
+# 2. Run (produces profraw)
+LLVM_PROFILE_FILE="/tmp/profraw/%m.profraw" /tmp/binary
 
 # 3. Merge
 xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o merged.profdata

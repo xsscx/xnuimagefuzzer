@@ -10,7 +10,19 @@ and validate the output images for quality and correctness.
 
 ## Steps
 
-1. **Build with instrumentation**
+### Option A: Native clang build (recommended — ASAN + UBSAN + Coverage)
+```bash
+.github/scripts/build-native.sh
+```
+This builds with `clang -fsanitize=address,undefined -fprofile-instr-generate -fcoverage-mapping`,
+runs the binary, and generates a coverage report.
+
+### Option B: xcodebuild (ASAN + UBSAN only, no coverage)
+
+> **⚠️ Do NOT add `CLANG_ENABLE_CODE_COVERAGE=YES`** — Xcode does not inject
+> coverage instrumentation for Mac Catalyst. Use Option A for coverage.
+
+1. **Build with sanitizers**
    ```bash
    xcodebuild build \
      -project "XNU Image Fuzzer.xcodeproj" \
@@ -22,14 +34,13 @@ and validate the output images for quality and correctness.
      CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
      ONLY_ACTIVE_ARCH=YES \
      CLANG_ADDRESS_SANITIZER=YES \
-     CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-     CLANG_ENABLE_CODE_COVERAGE=YES
+     CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES
    ```
 
 2. **Locate the binary**
    ```bash
    BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-     ! -path "*/Contents/Resources/*" | head -1)
+     ! -path "*/Contents/Resources/*" | sed -n '1p')
    ```
 
 3. **Run under sanitizers**
@@ -37,7 +48,6 @@ and validate the output images for quality and correctness.
    FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
    ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1" \
    UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-   LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw" \
      timeout 120 "$BINARY"
    ```
 
@@ -47,7 +57,9 @@ and validate the output images for quality and correctness.
    - Check magic bytes with `file -b`
    - Run `validate_fuzzed_images.py` for steganography analysis (requires Pillow)
 
-5. **Generate coverage report**
+5. **Generate coverage report** (Option A only)
+   Coverage report is generated automatically by `build-native.sh`.
+   To generate manually from profraw files:
    ```bash
    xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o merged.profdata
    xcrun llvm-cov report "$BINARY" -instr-profile=merged.profdata

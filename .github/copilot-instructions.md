@@ -53,7 +53,7 @@ xcodebuild build \
   GCC_TREAT_WARNINGS_AS_ERRORS=YES
 ```
 
-### Xcode (instrumented — ASAN + UBSAN + Coverage)
+### Xcode (ASAN + UBSAN — sanitizer testing only)
 ```bash
 xcodebuild build \
   -project "XNU Image Fuzzer.xcodeproj" \
@@ -67,8 +67,32 @@ xcodebuild build \
   GCC_TREAT_WARNINGS_AS_ERRORS=YES \
   CLANG_ADDRESS_SANITIZER=YES \
   CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-  CLANG_ENABLE_CODE_COVERAGE=YES \
   OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
+```
+
+> **⚠️ Do NOT add `CLANG_ENABLE_CODE_COVERAGE=YES` to xcodebuild Mac Catalyst builds.**
+> Xcode does NOT inject `-fprofile-instr-generate -fcoverage-mapping` for Mac Catalyst.
+> The binary will have ASAN/UBSAN symbols but zero coverage instrumentation.
+> Use the native clang build below for coverage.
+
+### Native clang (ASAN + UBSAN + Coverage — recommended)
+```bash
+# Use the build script (handles everything):
+.github/scripts/build-native.sh           # full pipeline: build + run + coverage
+.github/scripts/build-native.sh --build-only  # compile only
+.github/scripts/build-native.sh --run-only    # run existing binary
+
+# Or build manually:
+clang -arch arm64 -target arm64-apple-ios17.2-macabi \
+  -isysroot $(xcrun --show-sdk-path) \
+  -iframework $(xcrun --show-sdk-path)/System/iOSSupport/System/Library/Frameworks \
+  -fobjc-arc -g -O0 -fno-omit-frame-pointer \
+  -fsanitize=address,undefined \
+  -fprofile-instr-generate -fcoverage-mapping \
+  -framework Foundation -framework UIKit -framework CoreGraphics \
+  -framework ImageIO -framework UniformTypeIdentifiers \
+  -I"XNU Image Fuzzer" \
+  "XNU Image Fuzzer"/*.m -o /tmp/xnuimagefuzzer
 ```
 
 ### CMake (alternative)
@@ -82,7 +106,7 @@ cmake --build . --config Debug
 ```bash
 # Locate after build
 BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-  ! -path "*/Contents/Resources/*" | head -1)
+  ! -path "*/Contents/Resources/*" | sed -n '1p')
 
 # Run with sanitizers + coverage
 FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
@@ -181,7 +205,7 @@ using `CGImageDestinationCreateWithURL` with the appropriate UTType.
 | `code-quality.yml` | ObjC syntax, Python lint, CMake check | push/PR |
 | `build-and-test.yml` | Build, generate images, commit output | push/PR, cron 12h |
 | `cached-build.yml` | Fast build with DerivedData cache | push/PR |
-| `instrumented.yml` | ASAN+UBSAN+Coverage, quality validation | push/PR, dispatch |
+| `instrumented.yml` | ASAN+UBSAN testing + native clang coverage | push/PR, dispatch |
 | `release.yml` | Tag-triggered release with artifacts | tag v* |
 | `codeql-analysis.yml` | GitHub CodeQL security scanning | push/PR |
 
@@ -284,6 +308,13 @@ when the reader closes early. Use these alternatives:
 - `| head -cN` → `| cut -c1-N`
 - `| head -2 | tail -1` → `| sed -n '2p'`
 
+### Preserving output with `| tail`
+Bare `| tail` discards everything except the last lines. Use `| tee /tmp/log | tail`
+to preserve full output in a log file while showing a summary in CI:
+```bash
+xcodebuild ... | tee /tmp/xcodebuild.log | tail -5
+```
+
 ### No images generated in CI
 Mac Catalyst build uses `open --env` to launch the app. The CI polls for
 ≥80 files with a 120s timeout. If the app generates fewer than expected,
@@ -317,9 +348,20 @@ while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do slee
 ls -la /tmp/fuzzed-output/
 ```
 
-### Instrumented build + coverage
+### Instrumented build + coverage (native clang — recommended)
 ```bash
-# Build with sanitizers
+# The build script handles everything:
+.github/scripts/build-native.sh
+
+# This will:
+# 1. Build with clang -fsanitize=address,undefined -fprofile-instr-generate -fcoverage-mapping
+# 2. Run the binary (produces fuzzed images + profraw)
+# 3. Generate coverage report (text + HTML + LCOV)
+```
+
+### ASAN-only build (xcodebuild — no coverage)
+```bash
+# Build with sanitizers (no coverage — Xcode doesn't inject it for Mac Catalyst)
 xcodebuild build \
   -project "XNU Image Fuzzer.xcodeproj" \
   -scheme "XNU Image Fuzzer" \
@@ -328,22 +370,15 @@ xcodebuild build \
   -derivedDataPath /tmp/DerivedData \
   CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
   CLANG_ADDRESS_SANITIZER=YES CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-  CLANG_ENABLE_CODE_COVERAGE=YES \
   OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
 
-# Run with coverage + sanitizers
-mkdir -p /tmp/profraw /tmp/fuzzed-output
+# Run with sanitizers
+mkdir -p /tmp/fuzzed-output
 APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
 open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-     --env LLVM_PROFILE_FILE=/tmp/profraw/fuzzer-%m_%p.profraw \
      --env ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
      "$APP"
 
-# Wait, then generate coverage report
+# Wait for completion
 while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do sleep 2; done
-sleep 5  # profraw flush time
-BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-  ! -path "*/Contents/Resources/*" | sed -n '1p')
-xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o /tmp/merged.profdata
-xcrun llvm-cov report "$BINARY" -instr-profile=/tmp/merged.profdata
 ```
