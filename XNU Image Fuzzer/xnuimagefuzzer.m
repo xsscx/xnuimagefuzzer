@@ -624,6 +624,8 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format);
 
 // ICC profile embedding and color space diversity
 NSData* embedICCProfile(NSData *imageData, NSString *iccProfilePath, NSString *format);
+NSData* embedICCProfileData(NSData *imageData, NSData *iccData, NSString *format);
+NSData* mutateICCProfile(NSData *profileData);
 NSArray<NSString *>* loadICCProfilePaths(void);
 CGColorSpaceRef createNamedColorSpace(int index);
 
@@ -636,6 +638,7 @@ void writeMetricsSummaryCSV(NSArray<NSDictionary *> *allMetrics, NSString *outpu
 // Iteration chaining and batch processing
 void performChainedFuzzing(NSString *inputPath, int iterations, BOOL allPermutations);
 void performBatchFuzzing(NSString *inputDir, int iterations);
+void performPipelineFuzzing(NSString *inputDir, int iterations);
 NSArray<NSString *>* scanDirectoryForImages(NSString *directory);
 
 #pragma mark - IO Handling
@@ -2315,6 +2318,398 @@ void performBatchFuzzing(NSString *inputDir, int iterations) {
     NSLog(@"=== Batch Fuzzing complete ===");
 }
 
+#pragma mark - ICC Profile Mutation
+
+/*!
+ * @brief Mutates ICC profile binary data to exercise parser error paths.
+ * @details Applies targeted corruption strategies to ICC profile data:
+ *   - Tag table offset/size corruption
+ *   - Profile header field mutation (version, class, color space, PCS)
+ *   - CLUT data corruption in rendering intent tags (A2B/B2A)
+ *   - Random byte flips preserving the 'acsp' signature
+ * @param profileData Original ICC profile data.
+ * @return Mutated copy of the profile data.
+ */
+NSData* mutateICCProfile(NSData *profileData) {
+    if (!profileData || [profileData length] < 132) return profileData;
+
+    NSMutableData *mutated = [profileData mutableCopy];
+    unsigned char *bytes = (unsigned char *)[mutated mutableBytes];
+    NSUInteger len = [mutated length];
+
+    uint32_t strategy = arc4random_uniform(6);
+
+    switch (strategy) {
+        case 0: {
+            // Corrupt tag count and tag table entries (offset 128+)
+            if (len > 132) {
+                // Tag count at offset 128 (4 bytes, big-endian)
+                uint32_t origCount = ((uint32_t)bytes[128] << 24) | ((uint32_t)bytes[129] << 16) |
+                                     ((uint32_t)bytes[130] << 8) | bytes[131];
+                uint32_t newCount = arc4random_uniform(2) == 0 ? origCount + arc4random_uniform(100) : 0xFFFF;
+                bytes[128] = (newCount >> 24) & 0xFF;
+                bytes[129] = (newCount >> 16) & 0xFF;
+                bytes[130] = (newCount >>  8) & 0xFF;
+                bytes[131] = newCount & 0xFF;
+                NSLog(@"ICC mutation: tag count %u → %u", origCount, newCount);
+            }
+            break;
+        }
+        case 1: {
+            // Corrupt tag offsets/sizes to trigger OOB reads
+            // Each tag entry is 12 bytes starting at offset 132: sig(4) + offset(4) + size(4)
+            if (len > 144) {
+                uint32_t tagCount = ((uint32_t)bytes[128] << 24) | ((uint32_t)bytes[129] << 16) |
+                                     ((uint32_t)bytes[130] << 8) | bytes[131];
+                if (tagCount > 0 && tagCount < 200) {
+                    uint32_t tagIdx = arc4random_uniform(tagCount > 10 ? 10 : tagCount);
+                    size_t entryOff = 132 + tagIdx * 12;
+                    if (entryOff + 12 <= len) {
+                        // Set offset to near end of profile or beyond
+                        uint32_t bigOffset = (uint32_t)(len - arc4random_uniform(16));
+                        bytes[entryOff + 4] = (bigOffset >> 24) & 0xFF;
+                        bytes[entryOff + 5] = (bigOffset >> 16) & 0xFF;
+                        bytes[entryOff + 6] = (bigOffset >>  8) & 0xFF;
+                        bytes[entryOff + 7] = bigOffset & 0xFF;
+                        // Set size to very large
+                        uint32_t bigSize = 0xFFFFFF00 | arc4random_uniform(256);
+                        bytes[entryOff + 8]  = (bigSize >> 24) & 0xFF;
+                        bytes[entryOff + 9]  = (bigSize >> 16) & 0xFF;
+                        bytes[entryOff + 10] = (bigSize >>  8) & 0xFF;
+                        bytes[entryOff + 11] = bigSize & 0xFF;
+                        NSLog(@"ICC mutation: tag[%u] offset→0x%X size→0x%X", tagIdx, bigOffset, bigSize);
+                    }
+                }
+            }
+            break;
+        }
+        case 2: {
+            // Mutate header fields: version(8-11), device class(12-15),
+            // color space(16-19), PCS(20-23), rendering intent(64-67)
+            size_t fields[] = {8, 12, 16, 20, 64};
+            int fieldIdx = arc4random_uniform(5);
+            size_t off = fields[fieldIdx];
+            if (off + 4 <= len) {
+                for (int j = 0; j < 4; j++) {
+                    bytes[off + j] = arc4random_uniform(256);
+                }
+                NSLog(@"ICC mutation: header field at offset %zu randomized", off);
+            }
+            break;
+        }
+        case 3: {
+            // Find A2B0/B2A0 tags and corrupt CLUT data
+            // Walk tag table looking for 'A2B0' or 'B2A0' signatures
+            uint32_t tagCount = ((uint32_t)bytes[128] << 24) | ((uint32_t)bytes[129] << 16) |
+                                 ((uint32_t)bytes[130] << 8) | bytes[131];
+            if (tagCount > 200) tagCount = 200;
+            for (uint32_t t = 0; t < tagCount && 132 + t * 12 + 12 <= len; t++) {
+                size_t entryOff = 132 + t * 12;
+                char sig[5] = {bytes[entryOff], bytes[entryOff+1], bytes[entryOff+2], bytes[entryOff+3], 0};
+                if (strcmp(sig, "A2B0") == 0 || strcmp(sig, "B2A0") == 0 ||
+                    strcmp(sig, "A2B1") == 0 || strcmp(sig, "B2A1") == 0) {
+                    uint32_t tagOff = ((uint32_t)bytes[entryOff+4] << 24) | ((uint32_t)bytes[entryOff+5] << 16) |
+                                      ((uint32_t)bytes[entryOff+6] << 8) | bytes[entryOff+7];
+                    uint32_t tagSize = ((uint32_t)bytes[entryOff+8] << 24) | ((uint32_t)bytes[entryOff+9] << 16) |
+                                       ((uint32_t)bytes[entryOff+10] << 8) | bytes[entryOff+11];
+                    if (tagOff < len && tagOff + tagSize <= len && tagSize > 32) {
+                        // Corrupt CLUT grid points and data within the tag
+                        size_t corruptStart = tagOff + 16;
+                        size_t corruptCount = tagSize > 64 ? 32 : tagSize / 4;
+                        for (size_t c = 0; c < corruptCount && corruptStart + c < len; c++) {
+                            bytes[corruptStart + c] ^= arc4random_uniform(256);
+                        }
+                        NSLog(@"ICC mutation: corrupted %zu bytes in %s tag at offset %u", corruptCount, sig, tagOff);
+                    }
+                    break;
+                }
+            }
+            break;
+        }
+        case 4: {
+            // Set profile size field (bytes 0-3) to wrong value
+            uint32_t wrongSize = arc4random_uniform(2) == 0 ? (uint32_t)len * 2 : 64;
+            bytes[0] = (wrongSize >> 24) & 0xFF;
+            bytes[1] = (wrongSize >> 16) & 0xFF;
+            bytes[2] = (wrongSize >>  8) & 0xFF;
+            bytes[3] = wrongSize & 0xFF;
+            NSLog(@"ICC mutation: profile size header → %u (actual %lu)", wrongSize, (unsigned long)len);
+            break;
+        }
+        case 5: {
+            // Random byte flips (2%) preserving 'acsp' signature at 36-39
+            size_t flipCount = len / 50;
+            for (size_t i = 0; i < flipCount; i++) {
+                size_t off = arc4random_uniform((uint32_t)len);
+                if (off >= 36 && off <= 39) continue; // preserve 'acsp'
+                bytes[off] ^= (1 << arc4random_uniform(8));
+            }
+            NSLog(@"ICC mutation: %zu random byte flips (acsp preserved)", flipCount);
+            break;
+        }
+    }
+
+    return mutated;
+}
+
+#pragma mark - embedICCProfileData
+
+/*!
+ * @brief Embeds ICC profile from raw NSData (not file path) into an image.
+ * @param imageData Source image data.
+ * @param iccData Raw ICC profile bytes.
+ * @param format Image format identifier.
+ * @return Image data with ICC profile embedded.
+ */
+NSData* embedICCProfileData(NSData *imageData, NSData *iccData, NSString *format) {
+    if (!imageData || !iccData) return imageData;
+
+    CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
+    // Even if NULL (malformed), we still try to exercise the path
+
+    CGImageSourceRef source = CGImageSourceCreateWithData((CFDataRef)imageData, NULL);
+    if (!source) {
+        if (iccColorSpace) CGColorSpaceRelease(iccColorSpace);
+        return imageData;
+    }
+
+    CGImageRef cgImage = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    CFRelease(source);
+    if (!cgImage) {
+        if (iccColorSpace) CGColorSpaceRelease(iccColorSpace);
+        return imageData;
+    }
+
+    CGImageRef outputImage = cgImage;
+    if (iccColorSpace) {
+        size_t numComponents = CGColorSpaceGetNumberOfComponents(iccColorSpace);
+        size_t width = CGImageGetWidth(cgImage);
+        size_t height = CGImageGetHeight(cgImage);
+        if (numComponents == 3) {
+            CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4,
+                iccColorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+            if (ctx) {
+                CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImage);
+                CGImageRef rendered = CGBitmapContextCreateImage(ctx);
+                if (rendered) {
+                    CGImageRelease(cgImage);
+                    outputImage = rendered;
+                }
+                CGContextRelease(ctx);
+            }
+        }
+    }
+
+    CFStringRef utType = (__bridge CFStringRef)UTTypePNG.identifier;
+    if ([format containsString:@"tiff"]) utType = (__bridge CFStringRef)UTTypeTIFF.identifier;
+    else if ([format containsString:@"jpg"] || [format containsString:@"jpeg"]) utType = (__bridge CFStringRef)UTTypeJPEG.identifier;
+
+    NSMutableData *outputData = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData((CFMutableDataRef)outputData, utType, 1, NULL);
+    if (!dest) {
+        CGImageRelease(outputImage);
+        if (iccColorSpace) CGColorSpaceRelease(iccColorSpace);
+        return imageData;
+    }
+
+    CGImageDestinationAddImage(dest, outputImage, NULL);
+    BOOL ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+    CGImageRelease(outputImage);
+    if (iccColorSpace) CGColorSpaceRelease(iccColorSpace);
+
+    return ok ? outputData : imageData;
+}
+
+#pragma mark - Pipeline Fuzzing
+
+/*!
+ * @brief Full pipeline: clean images → fuzz → ICC embed → ICC+image fuzz → measure.
+ * @details For each input image from xnuimagetools generators:
+ *   Phase 1: Save the clean image as-is (baseline)
+ *   Phase 2: Fuzz the image through each permutation (varied bitmap contexts)
+ *   Phase 3: Embed each clean ICC profile into the clean image
+ *   Phase 4: Embed mutated ICC profiles + fuzz the image (combined attack)
+ *   Phase 5: Chain iterations feeding fuzzed output back as input
+ * All outputs get provenance names and metrics (SHA-256, entropy, JSON sidecar).
+ * Mutated ICC profiles are saved alongside images for downstream CFL/iccDEV analysis.
+ *
+ * @param inputDir Directory of clean images (from xnuimagetools generators).
+ * @param iterations Number of chained iterations for Phase 5.
+ */
+void performPipelineFuzzing(NSString *inputDir, int iterations) {
+    NSArray<NSString *> *images = scanDirectoryForImages(inputDir);
+    if ([images count] == 0) {
+        NSLog(@"Pipeline: no images found in %@", inputDir);
+        return;
+    }
+
+    NSArray<NSString *> *iccProfiles = loadICCProfilePaths();
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+    NSString *outputDir;
+    if (envDir) {
+        outputDir = [NSString stringWithUTF8String:envDir];
+    } else {
+        outputDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    }
+
+    // Create subdirectories for organized output
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *cleanDir   = [outputDir stringByAppendingPathComponent:@"pipeline-clean"];
+    NSString *fuzzedDir  = [outputDir stringByAppendingPathComponent:@"pipeline-fuzzed"];
+    NSString *iccDir     = [outputDir stringByAppendingPathComponent:@"pipeline-icc"];
+    NSString *comboDir   = [outputDir stringByAppendingPathComponent:@"pipeline-combo"];
+    NSString *chainDir   = [outputDir stringByAppendingPathComponent:@"pipeline-chained"];
+    NSString *profileDir = [outputDir stringByAppendingPathComponent:@"pipeline-profiles"];
+    for (NSString *d in @[cleanDir, fuzzedDir, iccDir, comboDir, chainDir, profileDir]) {
+        [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];
+    }
+
+    NSMutableArray<NSDictionary *> *allMetrics = [NSMutableArray array];
+    int totalOutputs = 0;
+
+    NSLog(@"=== Pipeline Fuzzing: %lu images, %lu ICC profiles, %d iterations ===",
+          (unsigned long)[images count], (unsigned long)[iccProfiles count], iterations);
+
+    for (NSUInteger imgIdx = 0; imgIdx < [images count]; imgIdx++) {
+        NSString *imagePath = images[imgIdx];
+        NSString *baseName = [[imagePath lastPathComponent] stringByDeletingPathExtension];
+        NSString *ext = [[imagePath pathExtension] lowercaseString];
+        if ([ext length] == 0) ext = @"png";
+
+        NSData *cleanData = [NSData dataWithContentsOfFile:imagePath];
+        if (!cleanData) {
+            NSLog(@"Pipeline: failed to load %@", imagePath);
+            continue;
+        }
+
+        NSLog(@"--- Pipeline image %lu/%lu: %@ (%lu bytes) ---",
+              (unsigned long)(imgIdx + 1), (unsigned long)[images count], baseName,
+              (unsigned long)[cleanData length]);
+
+        // ── Phase 1: Save clean baseline ──
+        NSString *cleanPath = [cleanDir stringByAppendingPathComponent:
+            [NSString stringWithFormat:@"%@_clean.%@", baseName, ext]];
+        [cleanData writeToFile:cleanPath atomically:YES];
+        NSDictionary *cleanMetrics = measureOutput(nil, cleanData, cleanPath);
+        NSMutableDictionary *cm = [cleanMetrics mutableCopy];
+        cm[@"phase"] = @"clean";
+        cm[@"source"] = baseName;
+        [allMetrics addObject:cm];
+        writeMetricsJSON(cm, cleanPath);
+        totalOutputs++;
+
+        // ── Phase 2: Fuzz through varied permutations ──
+        UIImage *cleanImage = [UIImage imageWithData:cleanData];
+        if (cleanImage) {
+            int permutations[] = {1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15};
+            int numPerms = sizeof(permutations) / sizeof(permutations[0]);
+            for (int p = 0; p < numPerms; p++) {
+                int perm = permutations[p];
+                processImage(cleanImage, perm);
+
+                // Re-encode and save
+                NSData *fuzzedData = UIImagePNGRepresentation(cleanImage);
+                if (fuzzedData) {
+                    NSString *fuzzedName = [NSString stringWithFormat:@"%@_perm%d.%@", baseName, perm, ext];
+                    NSString *fuzzedPath = [fuzzedDir stringByAppendingPathComponent:fuzzedName];
+                    [fuzzedData writeToFile:fuzzedPath atomically:YES];
+
+                    NSDictionary *fm2 = measureOutput(cleanData, fuzzedData, fuzzedPath);
+                    NSMutableDictionary *fe = [fm2 mutableCopy];
+                    fe[@"phase"] = @"fuzzed";
+                    fe[@"source"] = baseName;
+                    fe[@"permutation"] = @(perm);
+                    [allMetrics addObject:fe];
+                    writeMetricsJSON(fe, fuzzedPath);
+                    totalOutputs++;
+                }
+            }
+        }
+
+        // ── Phase 3: Embed clean ICC profiles ──
+        for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
+            NSString *iccPath = iccProfiles[iccIdx];
+            NSString *iccName = [[iccPath lastPathComponent] stringByDeletingPathExtension];
+
+            NSData *iccEmbedded = embedICCProfile(cleanData, iccPath, ext);
+            NSString *iccOutName = [NSString stringWithFormat:@"%@_icc-%@.%@", baseName, iccName, ext];
+            NSString *iccOutPath = [iccDir stringByAppendingPathComponent:iccOutName];
+            [iccEmbedded writeToFile:iccOutPath atomically:YES];
+
+            NSDictionary *im = measureOutput(cleanData, iccEmbedded, iccOutPath);
+            NSMutableDictionary *ie = [im mutableCopy];
+            ie[@"phase"] = @"icc-clean";
+            ie[@"source"] = baseName;
+            ie[@"icc_profile"] = iccName;
+            [allMetrics addObject:ie];
+            writeMetricsJSON(ie, iccOutPath);
+            totalOutputs++;
+        }
+
+        // ── Phase 4: Mutated ICC + fuzzed image (combined attack) ──
+        for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
+            NSString *iccPath = iccProfiles[iccIdx];
+            NSString *iccName = [[iccPath lastPathComponent] stringByDeletingPathExtension];
+            NSData *originalICC = [NSData dataWithContentsOfFile:iccPath];
+            if (!originalICC) continue;
+
+            // Generate 3 mutations per profile
+            for (int mut = 0; mut < 3; mut++) {
+                NSData *mutatedICC = mutateICCProfile(originalICC);
+
+                // Save the mutated profile for downstream iccDEV/CFL analysis
+                NSString *mutProfileName = [NSString stringWithFormat:@"%@_mut%d_%@.icc",
+                    baseName, mut + 1, iccName];
+                NSString *mutProfilePath = [profileDir stringByAppendingPathComponent:mutProfileName];
+                [mutatedICC writeToFile:mutProfilePath atomically:YES];
+
+                // Fuzz the image first, then embed the mutated profile
+                NSData *imageToEmbed = cleanData;
+                if (cleanImage) {
+                    int perm = ((int)iccIdx * 3 + mut) % 14 + 1;
+                    processImage(cleanImage, perm);
+                    NSData *fuzzed = UIImagePNGRepresentation(cleanImage);
+                    if (fuzzed) imageToEmbed = fuzzed;
+                }
+
+                NSData *comboData = embedICCProfileData(imageToEmbed, mutatedICC, ext);
+                // Apply post-encoding corruption to the combined output
+                comboData = applyPostEncodingCorruption(comboData, ext);
+
+                NSString *comboName = [NSString stringWithFormat:@"%@_combo-mut%d_%@.%@",
+                    baseName, mut + 1, iccName, ext];
+                NSString *comboPath = [comboDir stringByAppendingPathComponent:comboName];
+                [comboData writeToFile:comboPath atomically:YES];
+
+                NSDictionary *cm2 = measureOutput(cleanData, comboData, comboPath);
+                NSMutableDictionary *ce = [cm2 mutableCopy];
+                ce[@"phase"] = @"combo-mutated";
+                ce[@"source"] = baseName;
+                ce[@"icc_profile"] = iccName;
+                ce[@"mutation"] = @(mut + 1);
+                ce[@"mutated_profile_path"] = mutProfilePath;
+                [allMetrics addObject:ce];
+                writeMetricsJSON(ce, comboPath);
+                totalOutputs++;
+            }
+        }
+
+        // ── Phase 5: Chained iterations on the clean image ──
+        if (iterations > 1) {
+            // Save clean image to chain dir as iteration 0 input
+            NSString *chainInput = [chainDir stringByAppendingPathComponent:
+                [NSString stringWithFormat:@"%@_chain-input.%@", baseName, ext]];
+            [cleanData writeToFile:chainInput atomically:YES];
+            performChainedFuzzing(chainInput, iterations, NO);
+        }
+    }
+
+    writeMetricsSummaryCSV(allMetrics, outputDir);
+    NSLog(@"=== Pipeline Fuzzing complete: %d outputs from %lu images ===",
+          totalOutputs, (unsigned long)[images count]);
+}
+
 /*!
  * @brief Entry point of the application, handling initialization, argument parsing, and image processing.
  *
@@ -2374,6 +2769,7 @@ int main(int argc, const char * argv[]) {
         // Parse named arguments
         NSString *inputDir = nil;
         NSString *chainInput = nil;
+        NSString *pipelineDir = nil;
         int iterations = 3; // default chained iterations
 
         for (int i = 1; i < argc; i++) {
@@ -2381,6 +2777,8 @@ int main(int argc, const char * argv[]) {
                 inputDir = [NSString stringWithUTF8String:argv[++i]];
             } else if (strcmp(argv[i], "--chain") == 0 && i + 1 < argc) {
                 chainInput = [NSString stringWithUTF8String:argv[++i]];
+            } else if (strcmp(argv[i], "--pipeline") == 0 && i + 1 < argc) {
+                pipelineDir = [NSString stringWithUTF8String:argv[++i]];
             } else if (strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
                 iterations = atoi(argv[++i]);
                 if (iterations < 1) iterations = 1;
@@ -2388,7 +2786,17 @@ int main(int argc, const char * argv[]) {
             }
         }
 
-        if (inputDir) {
+        if (pipelineDir) {
+            // Pipeline fuzzing: clean → fuzz → ICC → combo → chain
+            NSLog(@"Pipeline fuzzing mode: %@ (%d iterations)", pipelineDir, iterations);
+            performPipelineFuzzing(pipelineDir, iterations);
+
+            llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
+            if (write_fn) { write_fn(); }
+            NSLog(@"XNU Image Fuzzer ✅ Pipeline complete %@", currentTime);
+            return 0;
+
+        } else if (inputDir) {
             // Batch fuzzing: process all images in directory
             NSLog(@"Batch fuzzing mode: %@ (%d iterations)", inputDir, iterations);
             performBatchFuzzing(inputDir, iterations);
@@ -2449,6 +2857,7 @@ int main(int argc, const char * argv[]) {
         } else {
             NSLog(@"Incorrect usage. Expected valid arguments, got %d", argc - 1);
             NSLog(@"Usage: %s <imagePath> <permutation>", argv[0]);
+            NSLog(@"       %s --pipeline <directory> [--iterations N]", argv[0]);
             NSLog(@"       %s --chain <imagePath> [--iterations N]", argv[0]);
             NSLog(@"       %s --input-dir <directory> [--iterations N]", argv[0]);
             NSLog(@"       %s  (no args = generate all permutations)", argv[0]);
