@@ -393,10 +393,15 @@ jobs:
           set -euo pipefail
           VERSION="${{ needs.build-release.outputs.version }}"
 
-          gh release create "${VERSION}" \
-            --title "XNU Image Fuzzer ${VERSION}" \
-            --notes-file /tmp/release-notes.md \
-            --verify-tag \
-            /tmp/assets/*
+          if gh release view "${VERSION}" >/dev/null 2>&1; then
+            echo "ℹ️  Release ${VERSION} exists — uploading assets"
+            gh release upload "${VERSION}" /tmp/assets/* --clobber
+          else
+            gh release create "${VERSION}" \
+              --title "XNU Image Fuzzer ${VERSION}" \
+              --notes-file /tmp/release-notes.md \
+              --verify-tag \
+              /tmp/assets/*
+          fi
 
-          echo "✅ Release created: ${VERSION}"
+          echo "✅ Release ready: ${VERSION}"
