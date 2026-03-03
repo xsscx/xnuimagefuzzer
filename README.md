@@ -1,139 +1,47 @@
-# Project Summary
+# XNU Image Fuzzer
 
-**Last Updated:** 2026-03-02 20:51:33 UTC
+Image fuzzing framework for iOS/macOS targeting CoreGraphics, ImageIO, and ICC profile parsing across 15 bitmap context types and 22 output formats.
 
-The XNU Image Fuzzer Source Code contains a proof of concept implementation of an image fuzzer designed for XNU environments. It aims to demonstrate basic fuzzing techniques on image data to uncover potential vulnerabilities in image processing routines. The Objective-C Code implements 15 CGCreateBitmap & CGColorSpace Functions working with Raw Data and String Injection that are User Controllable Inputs.
-- PermaLink https://srd.cx/xnu-image-fuzzer/
-- https://srd.cx/cve-2022-26730/
+- **PermaLink**: https://srd.cx/xnu-image-fuzzer/
+- **CVE Reference**: https://srd.cx/cve-2022-26730/
+- **Author**: David Hoyt — https://xss.cx · https://srd.cx · https://hoyt.net
 
 ## Workflow
-- https://github.com/xsscx/xnuimagefuzzer/actions
-- Create Images with https://github.com/xsscx/xnuimagetools
-- Fuzz Images with https://github.com/xsscx/xnuimagefuzzer
-- Create ICC Profiles with [ColorBleed Tools](https://github.com/xsscx/research/tree/main/colorbleed_tools)
-- Join the ICC Profile & Image
-    - `convert input.png -profile input.icc output.png`
-- Interact with:
-   - iMessage
-   - Outlook
-   - Phone
-   - Desktops
-   - TVs
 
-## Build & Install Status
-
-| Build OS & Device Info | Build | Install |
-|------------------------|-------|---------|
-| macOS - Latest         | ✅     | ✅       |
-| macOS 15 X86_64      | ✅     | ✅       |
-| macOS 14 arm         | ✅     | ✅       |
-| iPadOS 18            | ✅     | ✅       |
-| iPhoneOS 18         | ✅     | ✅       |
-| VisionPro 1.x          | ✅     | ✅       |
-
-#### Project Support
-- Open an Issue
-
-#### Project Documentation 
-URL https://xss.cx/public/docs/xnuimagefuzzer/
-
-### whoami
-- I am David Hoyt
-  - https://xss.cx
-  - https://srd.cx
-  - https://hoyt.net
+1. Generate baseline images with [xnuimagetools](https://github.com/xsscx/xnuimagetools) (iOS, watchOS, Mac Catalyst)
+2. Fuzz with xnuimagefuzzer (`--pipeline`, `--chain`, `--input-dir`)
+3. Embed ICC profiles (clean + [mutated](https://github.com/xsscx/research/tree/main/colorbleed_tools))
+4. Encode to 22 formats (PNG, JPEG, TIFF×5, HEIC, WebP, JP2, PDF, BMP, GIF, EXR, ICNS, …)
+5. Feed to target apps: Preview, Safari, iMessage, Mail, Notes
+6. Collect crashes from `~/Library/Logs/DiagnosticReports/`
 
 ## Quick Start
-- Open as Xcode Project or Clone
-- Update the Team ID
-- Click Run
-  - Share a File
-    
-## Copy Fuzzed Files
-- Open the Files App on the Device
-  - Tap Share to Transfer the new Fuzzed Images to your Desktop
-    - Select All Files to AirDrop to your Desktop
-- Screen Grab on iPhone 14 Pro MAX
 
-<img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-001.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #1" style="height:550px; width:330px;"/> <img src="https://xss.cx/2024/02/26/img/xnuimagefuzzer-arm64e-sample-output-files_app-sample-file-render-iphone14promax-002.png" alt="XNU Image Fuzzer iPhone 14 Pro Max Render #2" style="height:550px; width:330px;"/> 
+```bash
+# Xcode
+open "XNU Image Fuzzer.xcodeproj"  # Update Team ID → Run
 
-## How-to Rebuild Xcode Project
-- Open Terminal
-- Delete the Build Directories from the Project Folder
+# CLI (Mac Catalyst, unsigned)
+xcodebuild build \
+  -scheme "XNU Image Fuzzer" \
+  -destination 'platform=macOS,variant=Mac Catalyst' \
+  -configuration Release \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
-```
-xnuimagefuzzer % rm -rf CMakeCache.txt CMakeFiles CMakeScripts cmake_install.cmake build
-```
-### Create a Test Folder
-
-```
-xnuimagefuzzer % mkdir xcode_build
-```
-### Create the Xcode Project
-```
-xnuimagefuzzer % cd xcode_build
-xnuimagefuzzer/xcode_build % cmake -G Xcode ../XNU\ Image\ Fuzzer/CMakeLists.txt
--- The C compiler identification is AppleClang 15.0.0.15000309
--- The OBJC compiler identification is AppleClang 15.0.0.15000309
--- Detecting C compiler ABI info
--- Detecting C compiler ABI info - done
--- Check for working C compiler: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang - skipped
--- Detecting C compile features
--- Detecting C compile features - done
--- Detecting OBJC compiler ABI info
--- Detecting OBJC compiler ABI info - done
--- Check for working OBJC compiler: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang - skipped
--- Configuring done (8.8s)
--- Generating done (0.0s)
--- Build files have been written to: /Users/xss/Developer/xnuimagefuzzer/xcode_build
-```
-### Open the Project, Run
-```
-xcode_build % open xnuimagefuzzer.xcodeproj/
+# Pipeline fuzzing (generate → fuzz → ICC embed → measure)
+./XNU\ Image\ Fuzzer --pipeline /path/to/input-images/
 ```
 
-## Purpose of Using Fuzzed Images in Fuzzing
+## Platform Support
 
-### Overview
-Embedding fault mechanisms into a generic image and further processing it through fuzzing enhances the effectiveness of testing by uncovering edge cases and potential vulnerabilities in image processing software.
+| Platform | Status |
+|----------|--------|
+| macOS 15+ (arm64, x86_64) | ✅ |
+| iOS / iPadOS 18+ | ✅ |
+| visionOS 2.x | ✅ |
 
-### Benefits
+## Documentation
 
-#### Uncovering Edge Cases
-- **Insight:** Fuzzed images introduce a wide range of potential edge cases.
-- **Analysis:** Helps uncover rare bugs and vulnerabilities that might only occur with specific, unanticipated inputs.
-
-#### Testing Robustness and Stability
-- **Insight:** Stress-tests the robustness of image processing algorithms.
-- **Analysis:** Ensures the software can handle diverse and unexpected inputs without crashing or producing incorrect results.
-
-#### Finding Security Vulnerabilities
-- **Insight:** Targets specific vulnerabilities through fault injections.
-- **Analysis:** Exposes security weaknesses, such as buffer overflows, by providing inputs that cause unexpected behavior.
-
-#### Ensuring Compatibility with Various Formats
-- **Insight:** Tests the software's ability to handle different image formats and types.
-- **Analysis:** Reduces the risk of compatibility issues by providing comprehensive testing coverage.
-
-#### Automating the Testing Process
-- **Insight:** Integrates with automated fuzzing frameworks like Jackalope.
-- **Analysis:** Enables continuous and scalable testing, improving software robustness over time.
-
-### Process
-1. **Prepare the Image:**
-   - Start with a generic image.
-   - Apply initial fuzzing to introduce random mutations.
-   - Embed specific fault mechanisms to target vulnerabilities.
-2. **Submit to Fuzzing Harness:**
-   - Load the processed image into a fuzzing framework like Jackalope.
-   - Configure the tool to use the image as a seed for further automated fuzzing.
-3. **Monitor and Analyze:**
-   - Monitor for crashes, hangs, and other signs of vulnerabilities.
-   - Collect and analyze the results to identify and understand the bugs found.
-
-## XNU Image Tools
-- https://github.com/xsscx/xnuimagetools
-- Create random images for fuzzing using Apple Devices
-
-## Command Line Version
-See URL https://github.com/xsscx/macos-research/tree/main/code/iOSOnMac
+- [Copilot Instructions](.github/copilot-instructions.md) — build commands, architecture, debug env vars
+- [API Docs](https://xss.cx/public/docs/xnuimagefuzzer/)
+- [XNU Image Tools](https://github.com/xsscx/xnuimagetools) — multi-platform image generator

@@ -323,64 +323,19 @@ updating the polling threshold.
 
 ## Local Development (macOS)
 
-### Quick build + run
+Build with the Xcode command from [Build Commands](#build-commands), then:
 ```bash
-# Build
-xcodebuild build \
-  -project "XNU Image Fuzzer.xcodeproj" \
-  -scheme "XNU Image Fuzzer" \
-  -destination 'platform=macOS,variant=Mac Catalyst' \
-  -configuration Debug \
-  -derivedDataPath /tmp/DerivedData \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-  GCC_TREAT_WARNINGS_AS_ERRORS=YES
-
-# Find the app bundle
 APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
-
-# Run with output directory
 open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
-
-# Wait for completion (check file count)
-while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do sleep 2; done
-
-# View results
-ls -la /tmp/fuzzed-output/
 ```
 
 ### CoreGraphics debug environment variables
-For verbose CoreGraphics/Quartz diagnostics during local fuzzing, export
-these Apple-private debug env vars. They surface internal CG errors,
-backtraces, color conversion details, and memory allocation info that
-would otherwise be silent:
+Key CG debug vars for local fuzzing (Apple-private, surfaces internal errors):
 ```bash
-# CoreGraphics verbose diagnostics
-export CG_VERBOSE=1
-export CG_INFO=1
-export CG_PDF_VERBOSE=1
-export CG_CONTEXT_SHOW_BACKTRACE=1
-export CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1
-export CG_IMAGE_SHOW_MALLOC=1
-export CG_IMAGE_LOG_FORCE=1
-export CG_LAYER_SHOW_BACKTRACE=1
-export CGBITMAP_CONTEXT_LOG=1
-export CGBITMAP_CONTEXT_LOG_ERRORS=1
-export CGCOLORDATAPROVIDER_VERBOSE=1
-export CG_RASTERIZER_VERBOSE=1
-export CG_VERBOSE_COPY_IMAGE_BLOCK_DATA=1
-export CG_FONT_RENDERER_VERBOSE=1
-export CG_COLOR_CONVERSION_VERBOSE=1
-export CG_POSTSCRIPT_VERBOSE=1
-
-# PDF-specific
-export CGPDF_LOG_PAGES=1
-export CGPDF_VERBOSE=1
-export CGPDF_DRAW_VERBOSE=1
-export CGPDFCONTEXT_VERBOSE=1
-
-# QuartzCore / Core Animation
-export QuartzCoreDebugEnabled=1
-export CI_PRINT_TREE=1
+export CG_VERBOSE=1 CG_INFO=1 CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1
+export CGBITMAP_CONTEXT_LOG=1 CGBITMAP_CONTEXT_LOG_ERRORS=1
+export CG_IMAGE_SHOW_MALLOC=1 CG_IMAGE_LOG_FORCE=1 CG_COLOR_CONVERSION_VERBOSE=1
+export IMAGEIO_DEBUG=1
 ```
 
 When running via `open --env`, pass each var individually:
@@ -390,143 +345,33 @@ open --env CG_VERBOSE=1 --env CGBITMAP_CONTEXT_LOG=1 \
      --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
 ```
 
-### macOS malloc debugging
-Apple's libmalloc has built-in guards that catch heap corruption, use-after-free,
-and buffer overruns independent of ASAN. Useful when running without sanitizers
-or to cross-validate ASAN findings:
+### macOS memory debugging
 ```bash
-# Heap corruption detection
-export MallocGuardEdges=1          # Guard pages at heap block edges
-export MallocDoNotProtectPrelude=1 # Don't guard before block (detect overruns)
-export MallocDoNotProtectPostlude=1 # Don't guard after block (detect underruns)
-export MallocScribble=1            # Fill freed memory with 0x55, alloc with 0xAA
-export MallocCheckHeapStart=100    # Start heap validation after N allocs
-export MallocCheckHeapEach=100     # Validate heap every N allocs
-export MallocStackLogging=1        # Record stack traces for allocs (use with leaks/malloc_history)
-export MallocStackLoggingNoCompact=1 # Full stack logging (not compacted)
+# Malloc guards (independent of ASAN)
+export MallocGuardEdges=1 MallocScribble=1 MallocErrorAbort=1
+export MallocStackLogging=1  # Use with: malloc_history <pid> <addr>
 
-# Crash on error instead of continuing
-export MallocErrorAbort=1
-export MallocCorruptionAbort=1
-```
-
-Post-mortem analysis with malloc stack logging:
-```bash
-# After a crash, use malloc_history to find the allocation
-malloc_history <pid> <address>
-
-# Or use leaks(1) for live process
-leaks --atExit -- /tmp/xnuimagefuzzer
-```
-
-### Objective-C runtime debugging
-```bash
-# Zombie objects — detect use-after-release (messages to freed objects)
+# Zombie objects (use-after-release detection)
 export NSZombieEnabled=YES
-export NSDeallocateZombies=NO      # Keep zombies around (don't re-free)
 
-# Autorelease pool debugging
-export OBJC_DEBUG_POOL_ALLOCATION=YES
-export OBJC_DEBUG_MISSING_POOLS=YES
-
-# Log method dispatch (extremely verbose — use sparingly)
-# export OBJC_PRINT_EXCEPTIONS=YES
-# export OBJC_PRINT_EXCEPTION_THROW=YES
-# export NSObjCMessageLoggingEnabled=YES
-```
-
-### ASAN + UBSAN tuning for image fuzzing
-```bash
-# ASAN — recommended settings for image fuzzer
-export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1:detect_odr_violation=0:alloc_dealloc_mismatch=0"
-
-# UBSAN — catch everything
-export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:silence_unsigned_overflow=1"
-
-# TSAN (if building with -fsanitize=thread instead)
-# export TSAN_OPTIONS="halt_on_error=0:second_deadlock_stack=1"
-```
-
-### DYLD debugging (dynamic linker)
-```bash
-# Show library load order (helps diagnose missing frameworks)
-export DYLD_PRINT_LIBRARIES=1
-
-# Show search paths for frameworks
-export DYLD_PRINT_SEARCHING=1
-
-# Insert custom dylibs (e.g. libgmalloc for Guard Malloc)
-# export DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib
-
-# Note: SIP-protected binaries ignore DYLD_* vars.
-# Native clang builds are NOT SIP-protected, so these work.
-```
-
-### Guard Malloc (libgmalloc)
-Extreme heap protection — each allocation gets its own VM page with guard pages.
-Catches single-byte overruns that ASAN might miss but runs 100x slower:
-```bash
-# Via DYLD (native clang builds only — not SIP-protected)
+# Guard Malloc (extreme — 100x slower, catches single-byte overruns)
+# Native clang builds only (SIP blocks DYLD_INSERT for system binaries)
 DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib /tmp/xnuimagefuzzer
+```
 
-# Or via env var
-export MALLOC_PROTECT_BEFORE=1  # Guard page before allocation (catch underruns)
-# Default: guard page after allocation (catch overruns)
+### ASAN + UBSAN tuning
+```bash
+export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:detect_stack_use_after_return=1"
+export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:silence_unsigned_overflow=1"
 ```
 
 ### Crash report collection
 ```bash
-# macOS crash reports land here:
-ls ~/Library/Logs/DiagnosticReports/
-
-# For immediate crashes, use lldb:
-lldb -- /tmp/xnuimagefuzzer
-(lldb) env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output
-(lldb) env ASAN_OPTIONS=detect_leaks=0:halt_on_error=1
-(lldb) run
-# On crash: bt, frame variable, register read
-```
-
-### ImageIO / image format debugging
-```bash
-# Force ImageIO to log decode errors
-export IMAGEIO_DEBUG=1
-
-# CGImageSource verbose logging
-export CG_IMAGE_LOG_FORCE=1
+ls ~/Library/Logs/DiagnosticReports/           # macOS crash reports
+lldb -- /tmp/xnuimagefuzzer                    # interactive debugging
 ```
 
 ### Instrumented build + coverage (native clang — recommended)
 ```bash
-# The build script handles everything:
-.github/scripts/build-native.sh
-
-# This will:
-# 1. Build with clang -fsanitize=address,undefined -fprofile-instr-generate -fcoverage-mapping
-# 2. Run the binary (produces fuzzed images + profraw)
-# 3. Generate coverage report (text + HTML + LCOV)
-```
-
-### ASAN-only build (xcodebuild — no coverage)
-```bash
-# Build with sanitizers (no coverage — Xcode doesn't inject it for Mac Catalyst)
-xcodebuild build \
-  -project "XNU Image Fuzzer.xcodeproj" \
-  -scheme "XNU Image Fuzzer" \
-  -destination 'platform=macOS,variant=Mac Catalyst' \
-  -configuration Debug \
-  -derivedDataPath /tmp/DerivedData \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-  CLANG_ADDRESS_SANITIZER=YES CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-  OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
-
-# Run with sanitizers
-mkdir -p /tmp/fuzzed-output
-APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
-open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-     --env ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
-     "$APP"
-
-# Wait for completion
-while [ $(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l) -lt 80 ]; do sleep 2; done
+.github/scripts/build-native.sh      # build + run + coverage report
 ```
