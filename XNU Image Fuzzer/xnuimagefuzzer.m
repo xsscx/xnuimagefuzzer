@@ -629,6 +629,11 @@ NSData* mutateICCProfile(NSData *profileData);
 NSArray<NSString *>* loadICCProfilePaths(void);
 CGColorSpaceRef createNamedColorSpace(int index);
 
+// Multi-format encoding
+NSData* encodeImageAs(CGImageRef image, CFStringRef utType, NSDictionary *options);
+NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image);
+NSData* createTIFFThumbnail(CGImageRef image, size_t maxDim);
+
 // Provenance naming and output metrics
 NSString* provenanceFileName(NSString *inputName, int permutation, int injection, NSString *iccName, int seq, NSString *ext);
 NSDictionary* measureOutput(NSData *inputData, NSData *outputData, NSString *outputPath);
@@ -2182,7 +2187,11 @@ NSArray<NSString *>* scanDirectoryForImages(NSString *directory) {
         return @[];
     }
 
-    NSSet *imageExts = [NSSet setWithArray:@[@"png", @"jpg", @"jpeg", @"tiff", @"tif", @"gif", @"bmp", @"heic"]];
+    NSSet *imageExts = [NSSet setWithArray:@[
+        @"png", @"jpg", @"jpeg", @"tiff", @"tif", @"gif", @"bmp", @"heic", @"heif",
+        @"webp", @"jp2", @"exr", @"dng", @"tga", @"ico", @"icns", @"pbm", @"pdf",
+        @"astc", @"ktx"
+    ]];
     NSMutableArray *images = [NSMutableArray array];
     for (NSString *file in contents) {
         NSString *ext = [[file pathExtension] lowercaseString];
@@ -2316,6 +2325,315 @@ void performBatchFuzzing(NSString *inputDir, int iterations) {
         performChainedFuzzing(imagePath, iterations, NO);
     }
     NSLog(@"=== Batch Fuzzing complete ===");
+}
+
+#pragma mark - Multi-Format Encoding
+
+/*!
+ * @brief Encodes a CGImageRef into the specified UTType format.
+ * @param image Source image.
+ * @param utType UTType identifier (e.g., UTTypePNG.identifier).
+ * @param options Optional encoding properties (compression quality, etc.).
+ * @return Encoded image data, or nil on failure.
+ */
+NSData* encodeImageAs(CGImageRef image, CFStringRef utType, NSDictionary *options) {
+    if (!image || !utType) return nil;
+
+    NSMutableData *outputData = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+        (CFMutableDataRef)outputData, utType, 1, NULL);
+    if (!dest) return nil;
+
+    CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)options);
+    BOOL ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+    return ok && [outputData length] > 0 ? outputData : nil;
+}
+
+/*!
+ * @brief Creates a TIFF thumbnail by scaling down the image.
+ * @param image Source image.
+ * @param maxDim Maximum width or height for the thumbnail.
+ * @return TIFF-encoded thumbnail data.
+ */
+NSData* createTIFFThumbnail(CGImageRef image, size_t maxDim) {
+    if (!image) return nil;
+
+    size_t origW = CGImageGetWidth(image);
+    size_t origH = CGImageGetHeight(image);
+    CGFloat scale = (CGFloat)maxDim / MAX(origW, origH);
+    if (scale >= 1.0) scale = 1.0;
+    size_t thumbW = (size_t)(origW * scale);
+    size_t thumbH = (size_t)(origH * scale);
+    if (thumbW < 1) thumbW = 1;
+    if (thumbH < 1) thumbH = 1;
+
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, thumbW, thumbH, 8, thumbW * 4,
+        cs, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(cs);
+    if (!ctx) return nil;
+
+    CGContextSetInterpolationQuality(ctx, kCGInterpolationHigh);
+    CGContextDrawImage(ctx, CGRectMake(0, 0, thumbW, thumbH), image);
+    CGImageRef thumbImage = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (!thumbImage) return nil;
+
+    // Encode with LZW compression for TIFF
+    NSDictionary *tiffOpts = @{
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFCompression: @5  // LZW
+        }
+    };
+    NSData *result = encodeImageAs(thumbImage, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffOpts);
+    CGImageRelease(thumbImage);
+    NSLog(@"TIFF thumbnail: %zux%zu → %zux%zu (%lu bytes)",
+          origW, origH, thumbW, thumbH, (unsigned long)[result length]);
+    return result;
+}
+
+/*!
+ * @brief Encodes a CGImageRef into all supported image formats.
+ * @details Produces outputs in PNG, JPEG (multiple qualities), TIFF (uncompressed + LZW),
+ * BMP, GIF, HEIC, WebP, TIFF thumbnail, and OpenEXR where available.
+ * Uses CGImageDestination with UTType identifiers for maximum format coverage.
+ * @param image Source CGImageRef.
+ * @return Dictionary mapping "format.ext" → encoded NSData.
+ */
+NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
+    if (!image) return @{};
+
+    NSMutableDictionary<NSString *, NSData *> *results = [NSMutableDictionary dictionary];
+
+    // Format table: { display name, UTType identifier string, file extension, options }
+    // Core formats always available on Apple platforms
+    struct {
+        CFStringRef utType;
+        const char *ext;
+        const char *label;
+        float quality; // -1 = no quality param
+    } formats[] = {
+        { (__bridge CFStringRef)UTTypePNG.identifier,  "png",  "PNG",           -1 },
+        { (__bridge CFStringRef)UTTypeJPEG.identifier, "jpg",  "JPEG-high",     0.95 },
+        { (__bridge CFStringRef)UTTypeJPEG.identifier, "jpeg", "JPEG-low",      0.10 },
+        { (__bridge CFStringRef)UTTypeTIFF.identifier, "tiff", "TIFF",          -1 },
+        { (__bridge CFStringRef)UTTypeGIF.identifier,  "gif",  "GIF",           -1 },
+        { (__bridge CFStringRef)UTTypeBMP.identifier,  "bmp",  "BMP",           -1 },
+        { (__bridge CFStringRef)UTTypeICO.identifier,  "ico",  "ICO",           -1 },
+    };
+    int numFormats = sizeof(formats) / sizeof(formats[0]);
+
+    for (int i = 0; i < numFormats; i++) {
+        NSDictionary *opts = nil;
+        if (formats[i].quality >= 0) {
+            opts = @{ (__bridge NSString *)kCGImageDestinationLossyCompressionQuality:
+                      @(formats[i].quality) };
+        }
+        NSData *encoded = encodeImageAs(image, formats[i].utType, opts);
+        if (encoded) {
+            results[[NSString stringWithUTF8String:formats[i].ext]] = encoded;
+            NSLog(@"  %-12s → %lu bytes", formats[i].label, (unsigned long)[encoded length]);
+        }
+    }
+
+    // TIFF with LZW compression
+    NSDictionary *lzwOpts = @{
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFCompression: @5
+        }
+    };
+    NSData *tiffLZW = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, lzwOpts);
+    if (tiffLZW) {
+        results[@"tiff-lzw.tiff"] = tiffLZW;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-LZW", (unsigned long)[tiffLZW length]);
+    }
+
+    // TIFF thumbnail (64px max dimension)
+    NSData *thumb = createTIFFThumbnail(image, 64);
+    if (thumb) {
+        results[@"thumb.tiff"] = thumb;
+    }
+
+    // HEIC — may not be available on all platforms, try dynamically
+    CFStringRef heicType = (__bridge CFStringRef)@"public.heic";
+    NSData *heic = encodeImageAs(image, heicType, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
+    });
+    if (heic) {
+        results[@"heic"] = heic;
+        NSLog(@"  %-12s → %lu bytes", "HEIC", (unsigned long)[heic length]);
+    }
+
+    // HEIF
+    CFStringRef heifType = (__bridge CFStringRef)@"public.heif";
+    NSData *heif = encodeImageAs(image, heifType, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
+    });
+    if (heif) {
+        results[@"heif"] = heif;
+        NSLog(@"  %-12s → %lu bytes", "HEIF", (unsigned long)[heif length]);
+    }
+
+    // WebP — available on macOS 14+ / iOS 17+
+    CFStringRef webpType = (__bridge CFStringRef)@"org.webmproject.webp";
+    NSData *webp = encodeImageAs(image, webpType, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
+    });
+    if (webp) {
+        results[@"webp"] = webp;
+        NSLog(@"  %-12s → %lu bytes", "WebP", (unsigned long)[webp length]);
+    }
+
+    // JPEG 2000
+    CFStringRef jp2Type = (__bridge CFStringRef)@"public.jpeg-2000";
+    NSData *jp2 = encodeImageAs(image, jp2Type, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
+    });
+    if (jp2) {
+        results[@"jp2"] = jp2;
+        NSLog(@"  %-12s → %lu bytes", "JPEG2000", (unsigned long)[jp2 length]);
+    }
+
+    // OpenEXR — may not be available
+    CFStringRef exrType = (__bridge CFStringRef)@"com.ilm.openexr-image";
+    NSData *exr = encodeImageAs(image, exrType, nil);
+    if (exr) {
+        results[@"exr"] = exr;
+        NSLog(@"  %-12s → %lu bytes", "OpenEXR", (unsigned long)[exr length]);
+    }
+
+    // Adobe DNG — attempt via UTType
+    CFStringRef dngType = (__bridge CFStringRef)@"com.adobe.raw-image";
+    NSData *dng = encodeImageAs(image, dngType, nil);
+    if (dng) {
+        results[@"dng"] = dng;
+        NSLog(@"  %-12s → %lu bytes", "DNG", (unsigned long)[dng length]);
+    }
+
+    // PBMRAW — Portable Bitmap
+    CFStringRef pbmType = (__bridge CFStringRef)@"public.pbm";
+    NSData *pbm = encodeImageAs(image, pbmType, nil);
+    if (pbm) {
+        results[@"pbm"] = pbm;
+        NSLog(@"  %-12s → %lu bytes", "PBM", (unsigned long)[pbm length]);
+    }
+
+    // TGA — Targa
+    CFStringRef tgaType = (__bridge CFStringRef)@"com.truevision.tga-image";
+    NSData *tga = encodeImageAs(image, tgaType, nil);
+    if (tga) {
+        results[@"tga"] = tga;
+        NSLog(@"  %-12s → %lu bytes", "TGA", (unsigned long)[tga length]);
+    }
+
+    // ASTC — Adaptive Scalable Texture Compression (Apple GPU format)
+    CFStringRef astcType = (__bridge CFStringRef)@"org.khronos.astc";
+    NSData *astc = encodeImageAs(image, astcType, nil);
+    if (astc) {
+        results[@"astc"] = astc;
+        NSLog(@"  %-12s → %lu bytes", "ASTC", (unsigned long)[astc length]);
+    }
+
+    // KTX — Khronos Texture
+    CFStringRef ktxType = (__bridge CFStringRef)@"org.khronos.ktx";
+    NSData *ktx = encodeImageAs(image, ktxType, nil);
+    if (ktx) {
+        results[@"ktx"] = ktx;
+        NSLog(@"  %-12s → %lu bytes", "KTX", (unsigned long)[ktx length]);
+    }
+
+    // ── Formats targeted at Preview / Notes / iMessage / Mail parsers ──
+
+    // PDF — single-page image PDF (Preview, Mail inline, Notes, iMessage rich links)
+    CFStringRef pdfType = (__bridge CFStringRef)@"com.adobe.pdf";
+    NSData *pdf = encodeImageAs(image, pdfType, nil);
+    if (pdf) {
+        results[@"pdf"] = pdf;
+        NSLog(@"  %-12s → %lu bytes", "PDF", (unsigned long)[pdf length]);
+    }
+
+    // ICNS — macOS icon format (Preview, Finder, QuickLook)
+    CFStringRef icnsType = (__bridge CFStringRef)@"com.apple.icns";
+    NSData *icns = encodeImageAs(image, icnsType, nil);
+    if (icns) {
+        results[@"icns"] = icns;
+        NSLog(@"  %-12s → %lu bytes", "ICNS", (unsigned long)[icns length]);
+    }
+
+    // TIFF with PackBits compression (common in Mail attachments)
+    NSDictionary *packBitsOpts = @{
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFCompression: @(32773) // PackBits
+        }
+    };
+    NSData *tiffPB = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, packBitsOpts);
+    if (tiffPB) {
+        results[@"tiff-packbits.tiff"] = tiffPB;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-PackBits", (unsigned long)[tiffPB length]);
+    }
+
+    // TIFF with JPEG compression (Preview handles, exercises TIFF+JPEG decoder interplay)
+    NSDictionary *tiffJpegOpts = @{
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFCompression: @7  // JPEG-in-TIFF
+        }
+    };
+    NSData *tiffJpeg = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffJpegOpts);
+    if (tiffJpeg) {
+        results[@"tiff-jpeg.tiff"] = tiffJpeg;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-JPEG", (unsigned long)[tiffJpeg length]);
+    }
+
+    // TIFF with Deflate/ZIP compression
+    NSDictionary *tiffDeflateOpts = @{
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFCompression: @(32946) // Deflate
+        }
+    };
+    NSData *tiffDeflate = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffDeflateOpts);
+    if (tiffDeflate) {
+        results[@"tiff-deflate.tiff"] = tiffDeflate;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-Deflate", (unsigned long)[tiffDeflate length]);
+    }
+
+    // JPEG with EXIF-heavy properties (iMessage/Mail preview thumbnail path)
+    NSDictionary *jpegExifOpts = @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.5),
+        (__bridge NSString *)kCGImagePropertyExifDictionary: @{
+            (__bridge NSString *)kCGImagePropertyExifUserComment: @"fuzzed",
+            (__bridge NSString *)kCGImagePropertyExifColorSpace: @(65535), // Uncalibrated
+        },
+        (__bridge NSString *)kCGImagePropertyTIFFDictionary: @{
+            (__bridge NSString *)kCGImagePropertyTIFFSoftware: @"XNUImageFuzzer",
+        }
+    };
+    NSData *jpegExif = encodeImageAs(image, (__bridge CFStringRef)UTTypeJPEG.identifier, jpegExifOpts);
+    if (jpegExif) {
+        results[@"jpeg-exif.jpg"] = jpegExif;
+        NSLog(@"  %-12s → %lu bytes", "JPEG-EXIF", (unsigned long)[jpegExif length]);
+    }
+
+    // HEIC with max quality (iMessage default sending format on modern iOS)
+    NSData *heicHQ = encodeImageAs(image, heicType, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(1.0)
+    });
+    if (heicHQ) {
+        results[@"heic-hq.heic"] = heicHQ;
+        NSLog(@"  %-12s → %lu bytes", "HEIC-HQ", (unsigned long)[heicHQ length]);
+    }
+
+    // HEIC with minimum quality (stresses decompressor edge cases)
+    NSData *heicLQ = encodeImageAs(image, heicType, @{
+        (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.01)
+    });
+    if (heicLQ) {
+        results[@"heic-lq.heic"] = heicLQ;
+        NSLog(@"  %-12s → %lu bytes", "HEIC-LQ", (unsigned long)[heicLQ length]);
+    }
+
+    NSLog(@"Multi-format encoding: %lu formats produced", (unsigned long)[results count]);
+    return results;
 }
 
 #pragma mark - ICC Profile Mutation
@@ -2524,13 +2842,15 @@ NSData* embedICCProfileData(NSData *imageData, NSData *iccData, NSString *format
 #pragma mark - Pipeline Fuzzing
 
 /*!
- * @brief Full pipeline: clean images → fuzz → ICC embed → ICC+image fuzz → measure.
+ * @brief Full pipeline: clean images → multi-format → fuzz → ICC embed → ICC+image fuzz → measure.
  * @details For each input image from xnuimagetools generators:
- *   Phase 1: Save the clean image as-is (baseline)
- *   Phase 2: Fuzz the image through each permutation (varied bitmap contexts)
- *   Phase 3: Embed each clean ICC profile into the clean image
- *   Phase 4: Embed mutated ICC profiles + fuzz the image (combined attack)
- *   Phase 5: Chain iterations feeding fuzzed output back as input
+ *   Phase 1:   Save the clean image as-is (baseline)
+ *   Phase 1.5: Re-encode into all supported formats (PNG, JPEG, TIFF, BMP, GIF,
+ *              HEIC, WebP, JP2, EXR, DNG, TGA, ASTC, KTX, TIFF thumbnails)
+ *   Phase 2:   Fuzz each format variant through bitmap permutations
+ *   Phase 3:   Embed each clean ICC profile into the clean image
+ *   Phase 4:   Embed mutated ICC profiles + fuzz the image (combined attack)
+ *   Phase 5:   Chain iterations feeding fuzzed output back as input
  * All outputs get provenance names and metrics (SHA-256, entropy, JSON sidecar).
  * Mutated ICC profiles are saved alongside images for downstream CFL/iccDEV analysis.
  *
@@ -2556,12 +2876,13 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
     // Create subdirectories for organized output
     NSFileManager *fm = [NSFileManager defaultManager];
     NSString *cleanDir   = [outputDir stringByAppendingPathComponent:@"pipeline-clean"];
+    NSString *formatsDir = [outputDir stringByAppendingPathComponent:@"pipeline-formats"];
     NSString *fuzzedDir  = [outputDir stringByAppendingPathComponent:@"pipeline-fuzzed"];
     NSString *iccDir     = [outputDir stringByAppendingPathComponent:@"pipeline-icc"];
     NSString *comboDir   = [outputDir stringByAppendingPathComponent:@"pipeline-combo"];
     NSString *chainDir   = [outputDir stringByAppendingPathComponent:@"pipeline-chained"];
     NSString *profileDir = [outputDir stringByAppendingPathComponent:@"pipeline-profiles"];
-    for (NSString *d in @[cleanDir, fuzzedDir, iccDir, comboDir, chainDir, profileDir]) {
+    for (NSString *d in @[cleanDir, formatsDir, fuzzedDir, iccDir, comboDir, chainDir, profileDir]) {
         [fm createDirectoryAtPath:d withIntermediateDirectories:YES attributes:nil error:nil];
     }
 
@@ -2599,55 +2920,86 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
         writeMetricsJSON(cm, cleanPath);
         totalOutputs++;
 
-        // ── Phase 2: Fuzz through varied permutations ──
+        // ── Phase 1.5: Multi-format re-encoding ──
         UIImage *cleanImage = [UIImage imageWithData:cleanData];
+        CGImageRef cgClean = cleanImage ? cleanImage.CGImage : NULL;
+        if (cgClean) {
+            NSLog(@"Phase 1.5: encoding %@ into all supported formats", baseName);
+            NSDictionary<NSString *, NSData *> *formatOutputs = encodeImageMultiFormat(cgClean);
+            for (NSString *fmtExt in formatOutputs) {
+                NSData *fmtData = formatOutputs[fmtExt];
+                NSString *fmtName = [NSString stringWithFormat:@"%@.%@", baseName, fmtExt];
+                NSString *fmtPath = [formatsDir stringByAppendingPathComponent:fmtName];
+                [fmtData writeToFile:fmtPath atomically:YES];
+
+                NSDictionary *fmtMetrics = measureOutput(cleanData, fmtData, fmtPath);
+                NSMutableDictionary *fe = [fmtMetrics mutableCopy];
+                fe[@"phase"] = @"format";
+                fe[@"source"] = baseName;
+                fe[@"format"] = fmtExt;
+                [allMetrics addObject:fe];
+                writeMetricsJSON(fe, fmtPath);
+                totalOutputs++;
+            }
+        }
+
+        // ── Phase 2: Fuzz through varied permutations (multi-format output) ──
         if (cleanImage) {
             int permutations[] = {1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15};
             int numPerms = sizeof(permutations) / sizeof(permutations[0]);
             for (int p = 0; p < numPerms; p++) {
                 int perm = permutations[p];
                 processImage(cleanImage, perm);
+                CGImageRef fuzzedCG = cleanImage.CGImage;
+                if (!fuzzedCG) continue;
 
-                // Re-encode and save
-                NSData *fuzzedData = UIImagePNGRepresentation(cleanImage);
-                if (fuzzedData) {
-                    NSString *fuzzedName = [NSString stringWithFormat:@"%@_perm%d.%@", baseName, perm, ext];
+                // Encode fuzzed image into multiple formats
+                NSDictionary<NSString *, NSData *> *fuzzFormats = encodeImageMultiFormat(fuzzedCG);
+                for (NSString *fmtExt in fuzzFormats) {
+                    NSData *fuzzedData = fuzzFormats[fmtExt];
+                    NSString *fuzzedName = [NSString stringWithFormat:@"%@_perm%d.%@", baseName, perm, fmtExt];
                     NSString *fuzzedPath = [fuzzedDir stringByAppendingPathComponent:fuzzedName];
                     [fuzzedData writeToFile:fuzzedPath atomically:YES];
 
                     NSDictionary *fm2 = measureOutput(cleanData, fuzzedData, fuzzedPath);
-                    NSMutableDictionary *fe = [fm2 mutableCopy];
-                    fe[@"phase"] = @"fuzzed";
-                    fe[@"source"] = baseName;
-                    fe[@"permutation"] = @(perm);
-                    [allMetrics addObject:fe];
-                    writeMetricsJSON(fe, fuzzedPath);
+                    NSMutableDictionary *me = [fm2 mutableCopy];
+                    me[@"phase"] = @"fuzzed";
+                    me[@"source"] = baseName;
+                    me[@"permutation"] = @(perm);
+                    me[@"format"] = fmtExt;
+                    [allMetrics addObject:me];
+                    writeMetricsJSON(me, fuzzedPath);
                     totalOutputs++;
                 }
             }
         }
 
-        // ── Phase 3: Embed clean ICC profiles ──
+        // ── Phase 3: Embed clean ICC profiles (PNG + TIFF) ──
+        NSArray *iccFormats = @[@"png", @"tiff"];
         for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
             NSString *iccPath = iccProfiles[iccIdx];
             NSString *iccName = [[iccPath lastPathComponent] stringByDeletingPathExtension];
 
-            NSData *iccEmbedded = embedICCProfile(cleanData, iccPath, ext);
-            NSString *iccOutName = [NSString stringWithFormat:@"%@_icc-%@.%@", baseName, iccName, ext];
-            NSString *iccOutPath = [iccDir stringByAppendingPathComponent:iccOutName];
-            [iccEmbedded writeToFile:iccOutPath atomically:YES];
+            for (NSString *iccFmt in iccFormats) {
+                NSData *iccEmbedded = embedICCProfile(cleanData, iccPath, iccFmt);
+                NSString *iccOutName = [NSString stringWithFormat:@"%@_icc-%@.%@", baseName, iccName, iccFmt];
+                NSString *iccOutPath = [iccDir stringByAppendingPathComponent:iccOutName];
+                [iccEmbedded writeToFile:iccOutPath atomically:YES];
 
-            NSDictionary *im = measureOutput(cleanData, iccEmbedded, iccOutPath);
-            NSMutableDictionary *ie = [im mutableCopy];
-            ie[@"phase"] = @"icc-clean";
-            ie[@"source"] = baseName;
-            ie[@"icc_profile"] = iccName;
-            [allMetrics addObject:ie];
-            writeMetricsJSON(ie, iccOutPath);
-            totalOutputs++;
+                NSDictionary *im = measureOutput(cleanData, iccEmbedded, iccOutPath);
+                NSMutableDictionary *ie = [im mutableCopy];
+                ie[@"phase"] = @"icc-clean";
+                ie[@"source"] = baseName;
+                ie[@"icc_profile"] = iccName;
+                ie[@"format"] = iccFmt;
+                [allMetrics addObject:ie];
+                writeMetricsJSON(ie, iccOutPath);
+                totalOutputs++;
+            }
         }
 
-        // ── Phase 4: Mutated ICC + fuzzed image (combined attack) ──
+        // ── Phase 4: Mutated ICC + fuzzed image (combined attack, multi-format) ──
+        NSArray *comboFormats = @[@"png", @"tiff", @"jpeg"];
         for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
             NSString *iccPath = iccProfiles[iccIdx];
             NSString *iccName = [[iccPath lastPathComponent] stringByDeletingPathExtension];
@@ -2664,7 +3016,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
                 NSString *mutProfilePath = [profileDir stringByAppendingPathComponent:mutProfileName];
                 [mutatedICC writeToFile:mutProfilePath atomically:YES];
 
-                // Fuzz the image first, then embed the mutated profile
+                // Fuzz the image first, then embed the mutated profile into each format
                 NSData *imageToEmbed = cleanData;
                 if (cleanImage) {
                     int perm = ((int)iccIdx * 3 + mut) % 14 + 1;
@@ -2673,25 +3025,27 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
                     if (fuzzed) imageToEmbed = fuzzed;
                 }
 
-                NSData *comboData = embedICCProfileData(imageToEmbed, mutatedICC, ext);
-                // Apply post-encoding corruption to the combined output
-                comboData = applyPostEncodingCorruption(comboData, ext);
+                for (NSString *comboFmt in comboFormats) {
+                    NSData *comboData = embedICCProfileData(imageToEmbed, mutatedICC, comboFmt);
+                    comboData = applyPostEncodingCorruption(comboData, comboFmt);
 
-                NSString *comboName = [NSString stringWithFormat:@"%@_combo-mut%d_%@.%@",
-                    baseName, mut + 1, iccName, ext];
-                NSString *comboPath = [comboDir stringByAppendingPathComponent:comboName];
-                [comboData writeToFile:comboPath atomically:YES];
+                    NSString *comboName = [NSString stringWithFormat:@"%@_combo-mut%d_%@.%@",
+                        baseName, mut + 1, iccName, comboFmt];
+                    NSString *comboPath = [comboDir stringByAppendingPathComponent:comboName];
+                    [comboData writeToFile:comboPath atomically:YES];
 
-                NSDictionary *cm2 = measureOutput(cleanData, comboData, comboPath);
-                NSMutableDictionary *ce = [cm2 mutableCopy];
-                ce[@"phase"] = @"combo-mutated";
-                ce[@"source"] = baseName;
-                ce[@"icc_profile"] = iccName;
-                ce[@"mutation"] = @(mut + 1);
-                ce[@"mutated_profile_path"] = mutProfilePath;
-                [allMetrics addObject:ce];
-                writeMetricsJSON(ce, comboPath);
-                totalOutputs++;
+                    NSDictionary *cm2 = measureOutput(cleanData, comboData, comboPath);
+                    NSMutableDictionary *ce = [cm2 mutableCopy];
+                    ce[@"phase"] = @"combo-mutated";
+                    ce[@"source"] = baseName;
+                    ce[@"icc_profile"] = iccName;
+                    ce[@"mutation"] = @(mut + 1);
+                    ce[@"format"] = comboFmt;
+                    ce[@"mutated_profile_path"] = mutProfilePath;
+                    [allMetrics addObject:ce];
+                    writeMetricsJSON(ce, comboPath);
+                    totalOutputs++;
+                }
             }
         }
 
