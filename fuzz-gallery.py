@@ -29,9 +29,7 @@ import os
 import socketserver
 import subprocess
 import sys
-import threading
 import urllib.parse
-from pathlib import Path
 
 IMAGE_EXTENSIONS = {
     '.png', '.jpg', '.jpeg', '.tiff', '.tif', '.gif', '.bmp',
