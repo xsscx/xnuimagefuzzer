@@ -100,6 +100,8 @@ do_run() {
   # Clean stale data
   rm -f "$PROFRAW_DIR"/*.profraw "$FUZZ_DIR"/*
 
+  # Phase 1: Default mode — all 15 bitmap contexts + ICC variants
+  echo "── Phase 1: Default mode (all permutations) ──"
   FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
   FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
   LLVM_PROFILE_FILE="$PROFRAW_DIR/fuzzer-%m_%p.profraw" \
@@ -108,6 +110,26 @@ do_run() {
     "$BINARY" 2>&1 | tee /tmp/fuzzer-run.log
 
   RUN_EXIT=${PIPESTATUS[0]}
+  echo "Phase 1 exit code: $RUN_EXIT"
+
+  # Phase 2: Pipeline mode — exercises encodeImageMultiFormat, encodeImageAs, createTIFFThumbnail
+  echo ""
+  echo "── Phase 2: Pipeline mode (multi-format encoding) ──"
+  PIPELINE_DIR="$FUZZ_DIR/pipeline"
+  mkdir -p "$PIPELINE_DIR"
+  # Copy a few seed images as pipeline input
+  find "$FUZZ_DIR" -maxdepth 1 -name "*.png" -type f 2>/dev/null | head -3 | while read f; do
+    cp "$f" "$PIPELINE_DIR/" 2>/dev/null || true
+  done
+
+  FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
+  FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
+  LLVM_PROFILE_FILE="$PROFRAW_DIR/pipeline-%m_%p.profraw" \
+  ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
+  UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
+    "$BINARY" --pipeline "$PIPELINE_DIR" --iterations 2 2>&1 | tee -a /tmp/fuzzer-run.log || true
+
+  echo "Phase 2 exit code: $?"
 
   FILE_COUNT=$(find "$FUZZ_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
   PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
