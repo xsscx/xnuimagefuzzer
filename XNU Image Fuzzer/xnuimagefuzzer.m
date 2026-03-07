@@ -629,6 +629,12 @@ NSData* mutateICCProfile(NSData *profileData);
 NSArray<NSString *>* loadICCProfilePaths(void);
 CGColorSpaceRef createNamedColorSpace(int index);
 
+// ICC variant generation for fuzzer seed diversity
+void saveFuzzedImageWithICCVariants(UIImage *image, NSString *contextDescription);
+NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef utType);
+NSData* encodeImageStrippingColorSpace(CGImageRef image, CFStringRef utType);
+NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType);
+
 // Multi-format encoding
 NSData* encodeImageAs(CGImageRef image, CFStringRef utType, NSDictionary *options);
 NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image);
@@ -750,6 +756,10 @@ void saveFuzzedImage(UIImage *image, NSString *contextDescription) {
     
     if (success) {
         NSLog(@"Fuzzed image for '%@' context saved to %@", contextDescription, filePath);
+        // Generate ICC variants for TIFF and PNG outputs (most useful for CFL fuzzers)
+        if ([contextDescription containsString:@"tiff"] || [contextDescription containsString:@"png"]) {
+            saveFuzzedImageWithICCVariants(image, contextDescription);
+        }
     } else {
         NSLog(@"Failed to save fuzzed image for '%@' context", contextDescription);
     }
@@ -2048,6 +2058,250 @@ CGColorSpaceRef createNamedColorSpace(int index) {
     return cs;
 }
 
+#pragma mark - ICC Variant Generation
+
+/*!
+ * @brief Encodes a CGImage with a specific ICC profile injected via image properties.
+ * @details Uses kCGImagePropertyICCProfile to attach raw ICC data as a metadata property,
+ * independent of the image's color space. This exercises the ICC parsing path in
+ * downstream consumers (sips, ColorSync, CFL fuzzers) even when the profile doesn't
+ * match the image's actual pixel format.
+ * @param image Source CGImageRef.
+ * @param iccData Raw ICC profile bytes to embed.
+ * @param utType Output format UTType (PNG, TIFF, JPEG).
+ * @return Encoded image data with ICC profile attached, or nil on failure.
+ */
+NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef utType) {
+    if (!image || !iccData) return nil;
+
+    NSMutableData *outputData = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+        (CFMutableDataRef)outputData, utType, 1, NULL);
+    if (!dest) return nil;
+
+    NSDictionary *props = @{
+        (__bridge NSString *)kCGImagePropertyICCProfile: iccData
+    };
+    CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)props);
+    BOOL ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+
+    return ok && [outputData length] > 0 ? outputData : nil;
+}
+
+/*!
+ * @brief Encodes a CGImage with its color space stripped to DeviceRGB.
+ * @details Re-renders the image through a DeviceRGB context (no ICC profile attached),
+ * producing an image with no embedded ICC data. This exercises parsers' fallback
+ * behavior when no color management information is present.
+ * @param image Source CGImageRef.
+ * @param utType Output format UTType.
+ * @return Encoded image data without ICC profile, or nil on failure.
+ */
+NSData* encodeImageStrippingColorSpace(CGImageRef image, CFStringRef utType) {
+    if (!image) return nil;
+
+    size_t width = CGImageGetWidth(image);
+    size_t height = CGImageGetHeight(image);
+    CGColorSpaceRef deviceRGB = CGColorSpaceCreateDeviceRGB();
+    if (!deviceRGB) return nil;
+
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4,
+        deviceRGB, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(deviceRGB);
+    if (!ctx) return nil;
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
+    CGImageRef stripped = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (!stripped) return nil;
+
+    NSMutableData *outputData = [NSMutableData data];
+    CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+        (CFMutableDataRef)outputData, utType, 1, NULL);
+    if (!dest) {
+        CGImageRelease(stripped);
+        return nil;
+    }
+
+    CGImageDestinationAddImage(dest, stripped, NULL);
+    BOOL ok = CGImageDestinationFinalize(dest);
+    CFRelease(dest);
+    CGImageRelease(stripped);
+
+    return ok && [outputData length] > 0 ? outputData : nil;
+}
+
+/*!
+ * @brief Encodes a CGImage with a deliberately mismatched ICC profile.
+ * @details Attaches an ICC profile whose color space (e.g., CMYK, Gray, Lab) does not
+ * match the image's actual pixel data (typically RGB). This exercises error handling
+ * and color space conversion fallback paths in ICC consumers. Cycles through 4
+ * mismatch strategies per call using a static counter.
+ * @param image Source CGImageRef.
+ * @param utType Output format UTType.
+ * @return Encoded image data with mismatched ICC profile, or nil on failure.
+ */
+NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
+    if (!image) return nil;
+
+    static int mismatchCounter = 0;
+    int strategy = mismatchCounter++ % 4;
+
+    // Build a synthetic ICC profile header with wrong color space
+    // Minimal valid-looking 128-byte header + empty tag table
+    uint8_t header[132];
+    memset(header, 0, sizeof(header));
+
+    // Profile size (132 bytes)
+    header[0] = 0; header[1] = 0; header[2] = 0; header[3] = 132;
+    // Version 4.4
+    header[8] = 0x04; header[9] = 0x40;
+    // 'acsp' magic at offset 36
+    header[36] = 'a'; header[37] = 'c'; header[38] = 's'; header[39] = 'p';
+    // Tag count = 0 at offset 128
+    header[128] = 0; header[129] = 0; header[130] = 0; header[131] = 0;
+
+    switch (strategy) {
+        case 0:
+            // CMYK profile on RGB image
+            header[12] = 'p'; header[13] = 'r'; header[14] = 't'; header[15] = 'r'; // prtr
+            header[16] = 'C'; header[17] = 'M'; header[18] = 'Y'; header[19] = 'K'; // CMYK
+            header[20] = 'L'; header[21] = 'a'; header[22] = 'b'; header[23] = ' '; // Lab PCS
+            NSLog(@"ICC mismatch: CMYK profile on RGB image");
+            break;
+        case 1:
+            // Gray profile on RGB image
+            header[12] = 'm'; header[13] = 'n'; header[14] = 't'; header[15] = 'r'; // mntr
+            header[16] = 'G'; header[17] = 'R'; header[18] = 'A'; header[19] = 'Y'; // GRAY
+            header[20] = 'X'; header[21] = 'Y'; header[22] = 'Z'; header[23] = ' '; // XYZ PCS
+            NSLog(@"ICC mismatch: Gray profile on RGB image");
+            break;
+        case 2:
+            // Lab profile as device class (abstract)
+            header[12] = 'a'; header[13] = 'b'; header[14] = 's'; header[15] = 't'; // abst
+            header[16] = 'L'; header[17] = 'a'; header[18] = 'b'; header[19] = ' '; // Lab
+            header[20] = 'L'; header[21] = 'a'; header[22] = 'b'; header[23] = ' '; // Lab PCS
+            NSLog(@"ICC mismatch: Abstract Lab profile on RGB image");
+            break;
+        case 3:
+            // Truncated profile (size says 1024 but only 132 bytes)
+            header[0] = 0; header[1] = 0; header[2] = 4; header[3] = 0; // size=1024
+            header[12] = 'm'; header[13] = 'n'; header[14] = 't'; header[15] = 'r'; // mntr
+            header[16] = 'R'; header[17] = 'G'; header[18] = 'B'; header[19] = ' '; // RGB
+            header[20] = 'X'; header[21] = 'Y'; header[22] = 'Z'; header[23] = ' '; // XYZ PCS
+            NSLog(@"ICC mismatch: truncated RGB profile (132 of 1024 bytes)");
+            break;
+    }
+
+    // PCS illuminant D50 at offset 68-79
+    // X=0.9642 Y=1.0000 Z=0.8249 as s15Fixed16Number
+    header[68] = 0x00; header[69] = 0x00; header[70] = 0xF6; header[71] = 0xD6; // 0.9642
+    header[72] = 0x00; header[73] = 0x01; header[74] = 0x00; header[75] = 0x00; // 1.0000
+    header[76] = 0x00; header[77] = 0x00; header[78] = 0xD3; header[79] = 0x2D; // 0.8249
+
+    NSData *fakeProfile = [NSData dataWithBytes:header length:sizeof(header)];
+    return encodeImageWithICCProfile(image, fakeProfile, utType);
+}
+
+/*!
+ * @brief Saves ICC variants alongside the base fuzzed image.
+ * @details For each bitmap context output, generates up to 4 additional variants:
+ *   1. With a real ICC profile from FUZZ_ICC_DIR (if available)
+ *   2. With color space stripped (no ICC, DeviceRGB only)
+ *   3. With a deliberately mismatched ICC profile
+ *   4. With a mutated ICC profile (if FUZZ_ICC_DIR available)
+ * This dramatically increases seed diversity for CFL fuzzers.
+ * @param image The fuzzed UIImage from a bitmap context.
+ * @param contextDescription The context name (e.g., "standard_rgb_tiff").
+ */
+void saveFuzzedImageWithICCVariants(UIImage *image, NSString *contextDescription) {
+    if (!image || !image.CGImage) return;
+
+    CGImageRef cgImage = image.CGImage;
+    static NSArray<NSString *> *cachedICCPaths = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        cachedICCPaths = loadICCProfilePaths();
+    });
+
+    // Determine output directory
+    NSString *outputDir;
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+    if (envDir) {
+        outputDir = [NSString stringWithUTF8String:envDir];
+    } else {
+        outputDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    }
+
+    // Determine base name and format UTType
+    NSString *baseName = contextDescription;
+    CFStringRef utType = (__bridge CFStringRef)UTTypePNG.identifier;
+    NSString *ext = @"png";
+
+    if ([contextDescription containsString:@"tiff"]) {
+        utType = (__bridge CFStringRef)UTTypeTIFF.identifier;
+        ext = @"tiff";
+    } else if ([contextDescription containsString:@"jpeg"] || [contextDescription containsString:@"jpg"]) {
+        utType = (__bridge CFStringRef)UTTypeJPEG.identifier;
+        ext = @"jpg";
+    }
+
+    // Strip format suffix from base name
+    for (NSString *suffix in @[@"_png", @"_jpeg", @"_jpg", @"_gif", @"_tiff"]) {
+        if ([baseName hasSuffix:suffix]) {
+            baseName = [baseName substringToIndex:[baseName length] - [suffix length]];
+            break;
+        }
+    }
+
+    // Variant 1: Real ICC profile from FUZZ_ICC_DIR (round-robin)
+    if ([cachedICCPaths count] > 0) {
+        static int iccRoundRobin = 0;
+        NSString *iccPath = cachedICCPaths[iccRoundRobin % [cachedICCPaths count]];
+        iccRoundRobin++;
+        NSData *iccData = [NSData dataWithContentsOfFile:iccPath];
+        if (iccData) {
+            NSData *withICC = encodeImageWithICCProfile(cgImage, iccData, utType);
+            if (withICC) {
+                NSString *iccName = [[iccPath lastPathComponent] stringByDeletingPathExtension];
+                NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@_icc_%@.%@", baseName, iccName, ext];
+                NSString *filePath = [outputDir stringByAppendingPathComponent:fileName];
+                [withICC writeToFile:filePath atomically:YES];
+                NSLog(@"ICC variant saved: %@ (%lu bytes)", fileName, (unsigned long)[withICC length]);
+            }
+
+            // Variant 4: Mutated ICC profile
+            NSData *mutatedICC = mutateICCProfile(iccData);
+            NSData *withMutated = encodeImageWithICCProfile(cgImage, mutatedICC, utType);
+            if (withMutated) {
+                NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@_icc_mutated.%@", baseName, ext];
+                NSString *filePath = [outputDir stringByAppendingPathComponent:fileName];
+                [withMutated writeToFile:filePath atomically:YES];
+                NSLog(@"Mutated ICC variant saved: %@ (%lu bytes)", fileName, (unsigned long)[withMutated length]);
+            }
+        }
+    }
+
+    // Variant 2: Stripped color space (no ICC, DeviceRGB only)
+    NSData *stripped = encodeImageStrippingColorSpace(cgImage, utType);
+    if (stripped) {
+        NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@_no_icc.%@", baseName, ext];
+        NSString *filePath = [outputDir stringByAppendingPathComponent:fileName];
+        [stripped writeToFile:filePath atomically:YES];
+        NSLog(@"No-ICC variant saved: %@ (%lu bytes)", fileName, (unsigned long)[stripped length]);
+    }
+
+    // Variant 3: Mismatched ICC profile (CMYK/Gray/Lab on RGB, truncated)
+    NSData *mismatched = encodeImageWithMismatchedProfile(cgImage, utType);
+    if (mismatched) {
+        NSString *fileName = [NSString stringWithFormat:@"fuzzed_image_%@_icc_mismatch.%@", baseName, ext];
+        NSString *filePath = [outputDir stringByAppendingPathComponent:fileName];
+        [mismatched writeToFile:filePath atomically:YES];
+        NSLog(@"Mismatched ICC variant saved: %@ (%lu bytes)", fileName, (unsigned long)[mismatched length]);
+    }
+}
+
 #pragma mark - Provenance File Naming
 
 /*!
@@ -2630,6 +2884,76 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     if (heicLQ) {
         results[@"heic-lq.heic"] = heicLQ;
         NSLog(@"  %-12s → %lu bytes", "HEIC-LQ", (unsigned long)[heicLQ length]);
+    }
+
+    // ── ICC Profile Variant Encodings (for CFL fuzzer seed diversity) ──
+
+    // TIFF with stripped color space (no ICC metadata)
+    NSData *tiffNoICC = encodeImageStrippingColorSpace(image, (__bridge CFStringRef)UTTypeTIFF.identifier);
+    if (tiffNoICC) {
+        results[@"tiff-no-icc.tiff"] = tiffNoICC;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-noICC", (unsigned long)[tiffNoICC length]);
+    }
+
+    // PNG with stripped color space
+    NSData *pngNoICC = encodeImageStrippingColorSpace(image, (__bridge CFStringRef)UTTypePNG.identifier);
+    if (pngNoICC) {
+        results[@"png-no-icc.png"] = pngNoICC;
+        NSLog(@"  %-12s → %lu bytes", "PNG-noICC", (unsigned long)[pngNoICC length]);
+    }
+
+    // TIFF with mismatched ICC profile (exercises ICC parse error paths)
+    NSData *tiffMismatch = encodeImageWithMismatchedProfile(image, (__bridge CFStringRef)UTTypeTIFF.identifier);
+    if (tiffMismatch) {
+        results[@"tiff-icc-mismatch.tiff"] = tiffMismatch;
+        NSLog(@"  %-12s → %lu bytes", "TIFF-mismatch", (unsigned long)[tiffMismatch length]);
+    }
+
+    // PNG with mismatched ICC profile
+    NSData *pngMismatch = encodeImageWithMismatchedProfile(image, (__bridge CFStringRef)UTTypePNG.identifier);
+    if (pngMismatch) {
+        results[@"png-icc-mismatch.png"] = pngMismatch;
+        NSLog(@"  %-12s → %lu bytes", "PNG-mismatch", (unsigned long)[pngMismatch length]);
+    }
+
+    // TIFF with each of the 7 named color spaces
+    for (int csIdx = 0; csIdx < 7; csIdx++) {
+        CGColorSpaceRef namedCS = createNamedColorSpace(csIdx);
+        if (!namedCS) continue;
+
+        // Re-render through named color space
+        size_t w = CGImageGetWidth(image);
+        size_t h = CGImageGetHeight(image);
+        size_t nComp = CGColorSpaceGetNumberOfComponents(namedCS);
+        size_t bitsPerComp = 8;
+        size_t bytesPerRow = w * (nComp + 1); // +1 for alpha
+        CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast;
+
+        // Only render for RGB-compatible color spaces (3 components)
+        if (nComp == 3) {
+            CGContextRef csCtx = CGBitmapContextCreate(NULL, w, h, bitsPerComp,
+                bytesPerRow, namedCS, bitmapInfo);
+            if (csCtx) {
+                CGContextDrawImage(csCtx, CGRectMake(0, 0, w, h), image);
+                CGImageRef csImage = CGBitmapContextCreateImage(csCtx);
+                CGContextRelease(csCtx);
+                if (csImage) {
+                    NSData *csEncoded = encodeImageAs(csImage,
+                        (__bridge CFStringRef)UTTypeTIFF.identifier, nil);
+                    if (csEncoded) {
+                        CFStringRef csName = CGColorSpaceCopyName(namedCS);
+                        NSString *key = [NSString stringWithFormat:@"tiff-cs%d.tiff", csIdx];
+                        results[key] = csEncoded;
+                        NSLog(@"  TIFF-CS%-5d → %lu bytes (%@)", csIdx,
+                              (unsigned long)[csEncoded length],
+                              csName ? (__bridge NSString *)csName : @"unknown");
+                        if (csName) CFRelease(csName);
+                    }
+                    CGImageRelease(csImage);
+                }
+            }
+        }
+        CGColorSpaceRelease(namedCS);
     }
 
     NSLog(@"Multi-format encoding: %lu formats produced", (unsigned long)[results count]);
