@@ -72,12 +72,14 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          INPUT_TAG: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ]; then
             VERSION="${GITHUB_REF_NAME}"
-          elif [ -n "${{ inputs.tag_name }}" ]; then
-            VERSION="${{ inputs.tag_name }}"
+          elif [ -n "$INPUT_TAG" ]; then
+            VERSION="$INPUT_TAG"
           else
             VERSION="dev-$(git rev-parse --short HEAD)"
           fi

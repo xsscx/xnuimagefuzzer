@@ -18,7 +18,7 @@
 name: xnuimagefuzzer-build-and-test
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: build-test-${{ github.ref }}
@@ -54,7 +54,7 @@ on:
       - '**/*.pbxproj'
       - '**/*.xcscheme'
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
@@ -274,8 +274,8 @@ jobs:
           OUTPUT_DIR="/tmp/fuzzed_images"
           mkdir -p "$OUTPUT_DIR"
 
-          # Boot the simulator
-          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          # Boot the simulator (with timeout to prevent hangs)
+          timeout 60 xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
           echo "✅ Simulator booted"
 
           # Install the app
@@ -412,6 +412,8 @@ jobs:
     needs: generate-images
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     timeout-minutes: 10
+    permissions:
+      contents: write
     permissions:
       contents: write
     steps:

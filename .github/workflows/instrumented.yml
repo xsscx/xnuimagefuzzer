@@ -217,18 +217,23 @@ jobs:
           # Terminate app gracefully for profraw flush:
           # SIGINT triggers atexit() handlers (including llvm profraw writer)
           # SIGTERM does NOT trigger atexit() — so SIGINT first, then SIGTERM fallback
-          APP_PID=$(pgrep -f "XNU Image Fuzzer" 2>/dev/null || true)
-          if [ -n "$APP_PID" ]; then
-            echo "Sending SIGINT to app (PID $APP_PID) for profraw flush..."
-            kill -INT "$APP_PID" 2>/dev/null || true
+          # Use pgrep -x for exact process name match (avoids matching grep/open/shell)
+          APP_PIDS=$(pgrep -x "XNU Image Fuzzer" 2>/dev/null || true)
+          if [ -n "$APP_PIDS" ]; then
+            for APP_PID in $APP_PIDS; do
+              echo "Sending SIGINT to app (PID $APP_PID) for profraw flush..."
+              kill -INT "$APP_PID" 2>/dev/null || true
+            done
             sleep 3
 
-            # Check if it exited
-            if kill -0 "$APP_PID" 2>/dev/null; then
-              echo "App still running, sending SIGTERM..."
-              kill "$APP_PID" 2>/dev/null || true
-              sleep 2
-            fi
+            # Check if any instance still running
+            for APP_PID in $APP_PIDS; do
+              if kill -0 "$APP_PID" 2>/dev/null; then
+                echo "App still running (PID $APP_PID), sending SIGTERM..."
+                kill "$APP_PID" 2>/dev/null || true
+              fi
+            done
+            sleep 2
           fi
 
           # Check for profraw files (not expected from xcodebuild Mac Catalyst)

@@ -83,14 +83,12 @@ jobs:
         id: cache-key
         run: |
           set -euo pipefail
-          # Hash all source files for the cache key
-          SOURCE_HASH=$(find . \( -name '*.m' -o -name '*.h' -o -name '*.plist' \
-            -o -name '*.pbxproj' -o -name '*.storyboard' -o -name '*.xcscheme' \) \
-            -not -path './.git/*' -exec shasum {} \; | sort | shasum | cut -d' ' -f1)
+          # Use git tree hash for deterministic, fast cache keys
+          TREE_HASH=$(git rev-parse HEAD:.)
           XCODE_VERSION=$(xcodebuild -version 2>&1 | sed -n '1p' | tr ' ' '-')
-          echo "source_hash=${SOURCE_HASH}" >> "$GITHUB_OUTPUT"
+          echo "tree_hash=${TREE_HASH:0:12}" >> "$GITHUB_OUTPUT"
           echo "xcode_version=${XCODE_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Cache key components: Xcode=${XCODE_VERSION} Source=${SOURCE_HASH}"
+          echo "Cache key: Xcode=${XCODE_VERSION} Tree=${TREE_HASH:0:12}"
 
       - name: Restore DerivedData cache
         id: cache-restore
@@ -100,7 +98,7 @@ jobs:
             /tmp/DerivedData/Build/Intermediates.noindex
             /tmp/DerivedData/Build/Products
             /tmp/DerivedData/Index.noindex
-          key: xnuimagefuzzer-deriveddata-${{ steps.cache-key.outputs.xcode_version }}-${{ steps.cache-key.outputs.source_hash }}
+          key: xnuimagefuzzer-deriveddata-${{ steps.cache-key.outputs.xcode_version }}-${{ steps.cache-key.outputs.tree_hash }}
           restore-keys: |
             xnuimagefuzzer-deriveddata-${{ steps.cache-key.outputs.xcode_version }}-
 
