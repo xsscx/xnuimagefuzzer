@@ -1,0 +1,7 @@
+{
+  "output_size" : 2048,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_perm05_012.png",
+  "output_entropy" : 7.8317479923377258,
+  "timestamp" : "2026-03-07 16:13:06",
+  "output_sha256" : "3368b0088ecee8d2eadea7ab434cc32b0c5aa7626393450c66a4d4436cfd8a39"
+}
