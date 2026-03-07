@@ -1569,12 +1569,198 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
             }
         }
     } else if ([format containsString:@"tiff"] && len > 16) {
-        // TIFF: corrupt IFD entry count or offset
-        if (arc4random_uniform(3) == 0) {
-            size_t ifdOffset = safeStart + arc4random_uniform(8);
-            if (ifdOffset < len) {
-                bytes[ifdOffset] ^= arc4random_uniform(256);
-                NSLog(@"Corrupted TIFF IFD area at offset %zu", ifdOffset);
+        // TIFF structure: header(8) + IFD entries (12 bytes each) + data
+        // Byte order: II (little-endian) or MM (big-endian)
+        BOOL isLE = (bytes[0] == 'I' && bytes[1] == 'I');
+        BOOL isBE = (bytes[0] == 'M' && bytes[1] == 'M');
+
+        uint32_t ifdOffset = 0;
+        if ((isLE || isBE) && len >= 8) {
+            if (isLE) {
+                ifdOffset = bytes[4] | (bytes[5] << 8) | (bytes[6] << 16) | (bytes[7] << 24);
+            } else {
+                ifdOffset = (bytes[4] << 24) | (bytes[5] << 16) | (bytes[6] << 8) | bytes[7];
+            }
+        }
+
+        uint32_t mutation = arc4random_uniform(8);
+        switch (mutation) {
+            case 0: {
+                // Corrupt IFD entry count to extremely large value
+                if (ifdOffset + 2 <= len) {
+                    uint16_t badCounts[] = {0, 1, 0xFF, 0xFFFF, 0x7FFF, 3000};
+                    uint16_t val = badCounts[arc4random_uniform(6)];
+                    if (isLE) {
+                        bytes[ifdOffset] = val & 0xFF;
+                        bytes[ifdOffset + 1] = (val >> 8) & 0xFF;
+                    } else {
+                        bytes[ifdOffset] = (val >> 8) & 0xFF;
+                        bytes[ifdOffset + 1] = val & 0xFF;
+                    }
+                    NSLog(@"Corrupted TIFF IFD entry count to %u at offset %u", val, ifdOffset);
+                }
+                break;
+            }
+            case 1: {
+                // Corrupt IFD tag type fields — set invalid TIFF data types
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    if (numEntries > 0 && numEntries < 100 && ifdOffset + 2 + numEntries * 12 <= len) {
+                        uint32_t entry = arc4random_uniform(numEntries);
+                        size_t typeOff = ifdOffset + 2 + entry * 12 + 2;
+                        uint16_t badTypes[] = {0, 14, 15, 99, 0xFF, 0xFFFF};
+                        uint16_t val = badTypes[arc4random_uniform(6)];
+                        if (isLE) {
+                            bytes[typeOff] = val & 0xFF;
+                            bytes[typeOff + 1] = (val >> 8) & 0xFF;
+                        } else {
+                            bytes[typeOff] = (val >> 8) & 0xFF;
+                            bytes[typeOff + 1] = val & 0xFF;
+                        }
+                        NSLog(@"Corrupted TIFF IFD entry %u type to %u", entry, val);
+                    }
+                }
+                break;
+            }
+            case 2: {
+                // Corrupt strip offsets to point out of bounds
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    if (numEntries > 0 && numEntries < 100) {
+                        for (uint16_t e = 0; e < numEntries && ifdOffset + 2 + (e+1) * 12 <= len; e++) {
+                            size_t tagOff = ifdOffset + 2 + e * 12;
+                            uint16_t tag = isLE ? (bytes[tagOff] | (bytes[tagOff+1] << 8))
+                                                : ((bytes[tagOff] << 8) | bytes[tagOff+1]);
+                            if (tag == 273 || tag == 279) { // StripOffsets or StripByteCounts
+                                size_t valOff = tagOff + 8;
+                                uint32_t badVals[] = {0, 0xFFFFFFFF, (uint32_t)len + 1000, 0xDEADBEEF};
+                                uint32_t val = badVals[arc4random_uniform(4)];
+                                if (isLE) {
+                                    bytes[valOff] = val & 0xFF; bytes[valOff+1] = (val>>8) & 0xFF;
+                                    bytes[valOff+2] = (val>>16) & 0xFF; bytes[valOff+3] = (val>>24) & 0xFF;
+                                } else {
+                                    bytes[valOff] = (val>>24) & 0xFF; bytes[valOff+1] = (val>>16) & 0xFF;
+                                    bytes[valOff+2] = (val>>8) & 0xFF; bytes[valOff+3] = val & 0xFF;
+                                }
+                                NSLog(@"Corrupted TIFF tag %u value to 0x%08X", tag, val);
+                                break;
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            case 3: {
+                // Reorder IFD entries (violates TIFF spec requirement for ascending tag order)
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    if (numEntries >= 2 && ifdOffset + 2 + numEntries * 12 <= len) {
+                        uint32_t a = arc4random_uniform(numEntries);
+                        uint32_t b = arc4random_uniform(numEntries);
+                        if (a != b) {
+                            unsigned char tmp[12];
+                            size_t offA = ifdOffset + 2 + a * 12;
+                            size_t offB = ifdOffset + 2 + b * 12;
+                            memcpy(tmp, &bytes[offA], 12);
+                            memcpy(&bytes[offA], &bytes[offB], 12);
+                            memcpy(&bytes[offB], tmp, 12);
+                            NSLog(@"Swapped TIFF IFD entries %u and %u (tag reorder)", a, b);
+                        }
+                    }
+                }
+                break;
+            }
+            case 4: {
+                // Set next-IFD pointer to create circular reference
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    if (numEntries < 200) {
+                        size_t nextIFDOff = ifdOffset + 2 + numEntries * 12;
+                        if (nextIFDOff + 4 <= len) {
+                            // Point back to first IFD (circular) or to invalid offset
+                            uint32_t targets[] = {ifdOffset, 0, 0xFFFFFFFF, 8, (uint32_t)(len - 1)};
+                            uint32_t val = targets[arc4random_uniform(5)];
+                            if (isLE) {
+                                bytes[nextIFDOff] = val & 0xFF; bytes[nextIFDOff+1] = (val>>8) & 0xFF;
+                                bytes[nextIFDOff+2] = (val>>16) & 0xFF; bytes[nextIFDOff+3] = (val>>24) & 0xFF;
+                            } else {
+                                bytes[nextIFDOff] = (val>>24) & 0xFF; bytes[nextIFDOff+1] = (val>>16) & 0xFF;
+                                bytes[nextIFDOff+2] = (val>>8) & 0xFF; bytes[nextIFDOff+3] = val & 0xFF;
+                            }
+                            NSLog(@"Set TIFF next-IFD pointer to 0x%08X (circular/invalid)", val);
+                        }
+                    }
+                }
+                break;
+            }
+            case 5: {
+                // Corrupt ICC Profile tag (34675) data length to trigger OOB read
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    for (uint16_t e = 0; e < numEntries && ifdOffset + 2 + (e+1) * 12 <= len; e++) {
+                        size_t tagOff = ifdOffset + 2 + e * 12;
+                        uint16_t tag = isLE ? (bytes[tagOff] | (bytes[tagOff+1] << 8))
+                                            : ((bytes[tagOff] << 8) | bytes[tagOff+1]);
+                        if (tag == 34675) { // TIFFTAG_ICCPROFILE
+                            size_t countOff = tagOff + 4;
+                            uint32_t badSizes[] = {0, 1, 0xFFFFFF, 0x7FFFFFFF, (uint32_t)len * 2};
+                            uint32_t val = badSizes[arc4random_uniform(5)];
+                            if (isLE) {
+                                bytes[countOff] = val & 0xFF; bytes[countOff+1] = (val>>8) & 0xFF;
+                                bytes[countOff+2] = (val>>16) & 0xFF; bytes[countOff+3] = (val>>24) & 0xFF;
+                            } else {
+                                bytes[countOff] = (val>>24) & 0xFF; bytes[countOff+1] = (val>>16) & 0xFF;
+                                bytes[countOff+2] = (val>>8) & 0xFF; bytes[countOff+3] = val & 0xFF;
+                            }
+                            NSLog(@"Corrupted TIFF ICC Profile tag count to 0x%08X", val);
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+            case 6: {
+                // Inject BigTIFF magic (0x002B instead of 0x002A) — confuses parsers
+                if (len >= 4) {
+                    if (isLE) {
+                        bytes[2] = 0x2B; bytes[3] = 0x00; // BigTIFF version
+                    } else if (isBE) {
+                        bytes[2] = 0x00; bytes[3] = 0x2B;
+                    }
+                    NSLog(@"Injected BigTIFF magic (0x002B) into standard TIFF");
+                }
+                break;
+            }
+            case 7: {
+                // Corrupt image dimensions (width/height tags 256/257)
+                if (ifdOffset + 2 <= len) {
+                    uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
+                                               : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
+                    for (uint16_t e = 0; e < numEntries && ifdOffset + 2 + (e+1) * 12 <= len; e++) {
+                        size_t tagOff = ifdOffset + 2 + e * 12;
+                        uint16_t tag = isLE ? (bytes[tagOff] | (bytes[tagOff+1] << 8))
+                                            : ((bytes[tagOff] << 8) | bytes[tagOff+1]);
+                        if (tag == 256 || tag == 257) { // ImageWidth or ImageLength
+                            size_t valOff = tagOff + 8;
+                            uint32_t badDims[] = {0, 1, 0xFFFF, 0x7FFFFFFF, 100000};
+                            uint32_t val = badDims[arc4random_uniform(5)];
+                            if (isLE) {
+                                bytes[valOff] = val & 0xFF; bytes[valOff+1] = (val>>8) & 0xFF;
+                                bytes[valOff+2] = (val>>16) & 0xFF; bytes[valOff+3] = (val>>24) & 0xFF;
+                            } else {
+                                bytes[valOff] = (val>>24) & 0xFF; bytes[valOff+1] = (val>>16) & 0xFF;
+                                bytes[valOff+2] = (val>>8) & 0xFF; bytes[valOff+3] = val & 0xFF;
+                            }
+                            NSLog(@"Corrupted TIFF tag %u (dimension) to %u", tag, val);
+                        }
+                    }
+                }
+                break;
             }
         }
     }
