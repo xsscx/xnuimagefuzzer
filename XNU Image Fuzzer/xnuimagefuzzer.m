@@ -5744,7 +5744,7 @@ void createBitmapContextDisplayP3(CGImageRef cgImg) {
         saveFuzzedImage(newImage, @"display_p3_jpeg");
         saveFuzzedImage(newImage, @"display_p3_tiff");
         saveFuzzedImage(newImage, @"display_p3_gif");
-        saveFuzzedImageWithICCVariants(newImage, @"png", @"display_p3");
+        saveFuzzedImageWithICCVariants(newImage, @"display_p3");
         NSLog(@"Display P3 wide-gamut fuzzed images saved successfully.");
     }
 
@@ -5816,7 +5816,7 @@ void createBitmapContextBT2020(CGImageRef cgImg) {
         saveFuzzedImage(newImage, @"bt2020_jpeg");
         saveFuzzedImage(newImage, @"bt2020_tiff");
         saveFuzzedImage(newImage, @"bt2020_gif");
-        saveFuzzedImageWithICCVariants(newImage, @"png", @"bt2020");
+        saveFuzzedImageWithICCVariants(newImage, @"bt2020");
         NSLog(@"BT.2020 wide-gamut fuzzed images saved successfully.");
     }
 
