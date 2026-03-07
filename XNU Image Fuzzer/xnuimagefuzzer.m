@@ -2061,11 +2061,12 @@ CGColorSpaceRef createNamedColorSpace(int index) {
 #pragma mark - ICC Variant Generation
 
 /*!
- * @brief Encodes a CGImage with a specific ICC profile injected via image properties.
- * @details Uses kCGImagePropertyICCProfile to attach raw ICC data as a metadata property,
- * independent of the image's color space. This exercises the ICC parsing path in
- * downstream consumers (sips, ColorSync, CFL fuzzers) even when the profile doesn't
- * match the image's actual pixel format.
+ * @brief Encodes a CGImage with a specific ICC profile embedded via color space re-rendering.
+ * @details Creates a CGColorSpace from raw ICC data using CGColorSpaceCreateWithICCData(),
+ * re-renders the image through that color space, and encodes the result. ImageIO
+ * automatically embeds the ICC profile from the image's color space into the output.
+ * This exercises the ICC parsing path in downstream consumers (sips, ColorSync, CFL
+ * fuzzers). Only works for 3-component (RGB) ICC profiles.
  * @param image Source CGImageRef.
  * @param iccData Raw ICC profile bytes to embed.
  * @param utType Output format UTType (PNG, TIFF, JPEG).
@@ -2074,17 +2075,49 @@ CGColorSpaceRef createNamedColorSpace(int index) {
 NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef utType) {
     if (!image || !iccData) return nil;
 
+    // Create a color space from the ICC profile data
+    CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
+    if (!iccColorSpace) {
+        NSLog(@"ICC color space creation failed — embedding raw ICC via re-render fallback");
+        // Fallback: encode the image as-is (no ICC attached)
+        return nil;
+    }
+
+    // Re-render the image through the ICC color space
+    size_t width = CGImageGetWidth(image);
+    size_t height = CGImageGetHeight(image);
+    size_t nComp = CGColorSpaceGetNumberOfComponents(iccColorSpace);
+
+    // Only re-render for RGB-compatible (3-component) color spaces
+    if (nComp != 3) {
+        NSLog(@"ICC profile has %zu components (not RGB) — skipping re-render", nComp);
+        CGColorSpaceRelease(iccColorSpace);
+        return nil;
+    }
+
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4,
+        iccColorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(iccColorSpace);
+    if (!ctx) return nil;
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
+    CGImageRef iccImage = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (!iccImage) return nil;
+
+    // Encode — ImageIO embeds the ICC profile from the image's color space
     NSMutableData *outputData = [NSMutableData data];
     CGImageDestinationRef dest = CGImageDestinationCreateWithData(
         (CFMutableDataRef)outputData, utType, 1, NULL);
-    if (!dest) return nil;
+    if (!dest) {
+        CGImageRelease(iccImage);
+        return nil;
+    }
 
-    NSDictionary *props = @{
-        (__bridge NSString *)kCGImagePropertyICCProfile: iccData
-    };
-    CGImageDestinationAddImage(dest, image, (__bridge CFDictionaryRef)props);
+    CGImageDestinationAddImage(dest, iccImage, NULL);
     BOOL ok = CGImageDestinationFinalize(dest);
     CFRelease(dest);
+    CGImageRelease(iccImage);
 
     return ok && [outputData length] > 0 ? outputData : nil;
 }
