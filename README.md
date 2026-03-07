@@ -32,11 +32,35 @@ xcodebuild build \
 ./XNU\ Image\ Fuzzer --pipeline /path/to/input-images/
 ```
 
+## ICC Variant Generation
+
+The fuzzer generates 4 ICC profile variants for TIFF/PNG outputs:
+
+| Function | Strategy |
+|----------|----------|
+| `encodeImageWithICCProfile` | Injects ICC profile via `kCGImagePropertyICCProfile` |
+| `encodeImageStrippingColorSpace` | Outputs with DeviceRGB (no ICC) |
+| `encodeImageWithMismatchedProfile` | CMYK/Gray/Lab/truncated ICC on RGB data |
+| Mutated ICC | Bit-flipped ICC profile bytes |
+
+Use `CGColorSpaceCreateWithICCData()` for ICC embedding — `kCGImagePropertyICCProfile` does NOT exist in Apple SDKs.
+
+## CI/CD Workflows
+
+| Workflow | Purpose |
+|----------|---------|
+| `build-and-test.yml` | Build, generate images, commit output |
+| `cached-build.yml` | Fast build with DerivedData cache |
+| `code-quality.yml` | ObjC syntax, Python lint, CMake check |
+| `instrumented.yml` | ASAN+UBSAN testing + native clang coverage |
+| `codeql-analysis.yml` | GitHub CodeQL security scanning |
+| `release.yml` | Tag-triggered release with artifacts |
+
 ## Platform Support
 
 | Platform | Status |
 |----------|--------|
-| macOS 15+ (arm64, x86_64) | ✅ |
+| macOS 14+ (arm64, x86_64) | ✅ |
 | iOS / iPadOS 18+ | ✅ |
 | visionOS 2.x | ✅ |
 
@@ -44,4 +68,5 @@ xcodebuild build \
 
 - [Copilot Instructions](.github/copilot-instructions.md) — build commands, architecture, debug env vars
 - [API Docs](https://xss.cx/public/docs/xnuimagefuzzer/)
-- [XNU Image Tools](https://github.com/xsscx/xnuimagetools) — multi-platform image generator
+- [XNU Image Tools](https://github.com/xsscx/xnuimagetools) — multi-platform image generator + VideoToolbox fuzzer
+- [Security Research](https://github.com/xsscx/research) — ICC profile analysis, CFL fuzzers, MCP server
