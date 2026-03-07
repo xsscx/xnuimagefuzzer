@@ -125,6 +125,11 @@ main() → performAllImagePermutations()
       createBitmapContext*() → fill with fuzz data
       → CGBitmapContextCreateImage()
       → saveFuzzedImage(seed) → FUZZ_OUTPUT_DIR/
+        └→ saveFuzzedImageWithICCVariants() (TIFF/PNG only)
+           ├→ encodeImageWithICCProfile()     — real ICC from FUZZ_ICC_DIR
+           ├→ encodeImageStrippingColorSpace() — DeviceRGB, no ICC metadata
+           ├→ encodeImageWithMismatchedProfile() — CMYK/Gray/Lab on RGB
+           └→ mutateICCProfile() + encode      — corrupted ICC profile
       → applyPostEncodingCorruption(seed) → 6 PNG chunk-level mutations
       → saveFuzzedImage(corrupted) → FUZZ_OUTPUT_DIR/
       → processImage(seed, permutation) → save as PNG/JPEG/GIF/TIFF
@@ -163,10 +168,28 @@ main() → performAllImagePermutations()
 Images are saved as: PNG, JPEG, GIF, BMP, TIFF, HEIF
 using `CGImageDestinationCreateWithURL` with the appropriate UTType.
 
+### ICC Variant Generation
+
+Every `saveFuzzedImage()` call for TIFF and PNG outputs automatically triggers
+`saveFuzzedImageWithICCVariants()`, which produces up to 4 additional files per image:
+
+| Variant | Function | Description |
+|---------|----------|-------------|
+| Real ICC | `encodeImageWithICCProfile()` | Re-renders through ICC color space via `CGColorSpaceCreateWithICCData()` |
+| Stripped | `encodeImageStrippingColorSpace()` | Re-renders through DeviceRGB — no ICC metadata |
+| Mismatched | `encodeImageWithMismatchedProfile()` | CMYK/Gray/Lab/truncated profile on RGB image |
+| Mutated | `mutateICCProfile()` + encode | 6 corruption strategies on real ICC data |
+
+**API notes:**
+- `kCGImagePropertyICCProfile` does NOT exist in Apple SDKs — do not use it
+- Use `CGColorSpaceCreateWithICCData()` (iOS 10+/macOS 10.12+) to embed ICC profiles
+- xnuimagetools is the source of truth for xnuimagefuzzer.m — always sync after changes
+
 ### Environment Variables
 | Variable | Purpose |
 |----------|---------|
-| `FUZZ_OUTPUT_DIR` | Override image output directory |
+| `FUZZ_OUTPUT_DIR` | Override image output directory (default: app Documents) |
+| `FUZZ_ICC_DIR` | Directory of `.icc`/`.icm` profiles for embedding (round-robin) |
 | `LLVM_PROFILE_FILE` | Coverage profraw output path |
 | `ASAN_OPTIONS` | AddressSanitizer configuration |
 | `UBSAN_OPTIONS` | UBSanitizer configuration |
