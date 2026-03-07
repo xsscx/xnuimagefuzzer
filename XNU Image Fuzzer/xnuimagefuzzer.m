@@ -611,6 +611,8 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg);
 void createBitmapContextCMYK(CGImageRef cgImg);
 void createBitmapContextHDRFloat16(CGImageRef cgImg);
 void createBitmapContextIndexedColor(CGImageRef cgImg);
+void createBitmapContextDisplayP3(CGImageRef cgImg);
+void createBitmapContextBT2020(CGImageRef cgImg);
 void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void applyEnhancedFuzzingToBitmapContext16Bit(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
@@ -1940,6 +1942,8 @@ void performAllImagePermutations(void) {
         { 48,  48, 13},  // Medium square — CMYK
         { 64,  32, 14},  // Wide rectangle — HDRFloat16
         { 32,  64, 15},  // Tall rectangle — IndexedColor
+        {128,  64, 16},  // Wide rectangle — Display P3
+        { 64, 128, 17},  // Tall rectangle — BT.2020
     };
     int count = sizeof(specs) / sizeof(specs[0]);
 
@@ -3878,7 +3882,7 @@ void processImage(UIImage *image, int permutation) {
     NSLog(@"CGImage created from UIImage. Dimensions: %zu x %zu", CGImageGetWidth(cgImg), CGImageGetHeight(cgImg));
 
     if (permutation == -1) {
-        for (int i = 1; i <= 15; i++) {
+        for (int i = 1; i <= 17; i++) {
             switch (i) {
                 case 1:
                     NSLog(@"Case: Creating bitmap context with Standard RGB settings");
@@ -3939,6 +3943,14 @@ void processImage(UIImage *image, int permutation) {
                 case 15:
                     NSLog(@"Case: Creating bitmap context with Indexed Color settings");
                     createBitmapContextIndexedColor(cgImg);
+                    break;
+                case 16:
+                    NSLog(@"Case: Creating bitmap context with Display P3 wide-gamut settings");
+                    createBitmapContextDisplayP3(cgImg);
+                    break;
+                case 17:
+                    NSLog(@"Case: Creating bitmap context with BT.2020 wide-gamut settings");
+                    createBitmapContextBT2020(cgImg);
                     break;
                 default:
                     NSLog(@"Case: Invalid permutation number %d", permutation);
@@ -4007,6 +4019,14 @@ void processImage(UIImage *image, int permutation) {
             case 15:
                 NSLog(@"Case: Creating bitmap context with Indexed Color settings");
                 createBitmapContextIndexedColor(cgImg);
+                break;
+            case 16:
+                NSLog(@"Case: Creating bitmap context with Display P3 wide-gamut settings");
+                createBitmapContextDisplayP3(cgImg);
+                break;
+            case 17:
+                NSLog(@"Case: Creating bitmap context with BT.2020 wide-gamut settings");
+                createBitmapContextBT2020(cgImg);
                 break;
             default:
                 NSLog(@"Case: Invalid permutation number %d", permutation);
@@ -5659,4 +5679,147 @@ void createBitmapContextIndexedColor(CGImageRef cgImg) {
     CGContextRelease(ctx);
     free(indexData);
     free(rgbaData);
+}
+
+#pragma mark - createBitmapContextDisplayP3
+
+/*!
+ * @brief Creates a bitmap context using the Display P3 wide-gamut color space.
+ *
+ * @details Display P3 is a wide-gamut RGB color space used by modern Apple displays.
+ * It covers ~25% more colors than sRGB, making it ideal for testing how image decoders
+ * handle wide-gamut content. This context exercises CGColorSpaceCreateWithName() with
+ * kCGColorSpaceDisplayP3 — a different code path than CGColorSpaceCreateDeviceRGB().
+ *
+ * @param cgImg The source image to process.
+ */
+void createBitmapContextDisplayP3(CGImageRef cgImg) {
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
+    NSLog(@"Creating bitmap context with Display P3 wide-gamut color space");
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+    if (!colorSpace) {
+        NSLog(@"Failed to create Display P3 color space — falling back to device RGB");
+        colorSpace = CGColorSpaceCreateDeviceRGB();
+    }
+    if (!colorSpace) {
+        NSLog(@"Failed to create any color space for Display P3 context");
+        return;
+    }
+
+    size_t bytesPerRow = width * 4;
+    unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
+    if (!rawData) {
+        NSLog(@"Failed to allocate memory for Display P3 pixel data");
+        CGColorSpaceRelease(colorSpace);
+        return;
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create Display P3 bitmap context");
+        free(rawData);
+        return;
+    }
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+    applyEnhancedFuzzingToBitmapContext(rawData, width, height, YES);
+
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from Display P3 context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        saveFuzzedImage(newImage, @"display_p3_png");
+        saveFuzzedImage(newImage, @"display_p3_jpeg");
+        saveFuzzedImage(newImage, @"display_p3_tiff");
+        saveFuzzedImage(newImage, @"display_p3_gif");
+        saveFuzzedImageWithICCVariants(newImage, @"png", @"display_p3");
+        NSLog(@"Display P3 wide-gamut fuzzed images saved successfully.");
+    }
+
+    CGContextRelease(ctx);
+    free(rawData);
+}
+
+#pragma mark - createBitmapContextBT2020
+
+/*!
+ * @brief Creates a bitmap context using the ITU-R BT.2020 wide-gamut color space.
+ *
+ * @details BT.2020 (Rec. 2020) is an ultra-wide-gamut color space defined by ITU-R for
+ * UHD television. It covers significantly more colors than both sRGB and Display P3.
+ * This context exercises CGColorSpaceCreateWithName() with kCGColorSpaceITUR_2020 —
+ * testing the least-common wide-gamut path in CoreGraphics. Images with BT.2020 ICC
+ * profiles stress color management systems that may not expect out-of-sRGB values.
+ *
+ * @param cgImg The source image to process.
+ */
+void createBitmapContextBT2020(CGImageRef cgImg) {
+    if (!cgImg) {
+        NSLog(@"Invalid CGImageRef provided.");
+        return;
+    }
+
+    NSLog(@"Creating bitmap context with BT.2020 wide-gamut color space");
+
+    size_t width = CGImageGetWidth(cgImg);
+    size_t height = CGImageGetHeight(cgImg);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2020);
+    if (!colorSpace) {
+        NSLog(@"Failed to create BT.2020 color space — falling back to Display P3");
+        colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+    }
+    if (!colorSpace) {
+        NSLog(@"Failed to create any wide-gamut color space for BT.2020 context");
+        return;
+    }
+
+    size_t bytesPerRow = width * 4;
+    unsigned char *rawData = (unsigned char *)calloc(height * bytesPerRow, sizeof(unsigned char));
+    if (!rawData) {
+        NSLog(@"Failed to allocate memory for BT.2020 pixel data");
+        CGColorSpaceRelease(colorSpace);
+        return;
+    }
+
+    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
+    CGColorSpaceRelease(colorSpace);
+
+    if (!ctx) {
+        NSLog(@"Failed to create BT.2020 bitmap context");
+        free(rawData);
+        return;
+    }
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImg);
+    applyEnhancedFuzzingToBitmapContext(rawData, width, height, YES);
+
+    CGImageRef newCgImg = CGBitmapContextCreateImage(ctx);
+    if (!newCgImg) {
+        NSLog(@"Failed to create CGImage from BT.2020 context");
+    } else {
+        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        CGImageRelease(newCgImg);
+        saveFuzzedImage(newImage, @"bt2020_png");
+        saveFuzzedImage(newImage, @"bt2020_jpeg");
+        saveFuzzedImage(newImage, @"bt2020_tiff");
+        saveFuzzedImage(newImage, @"bt2020_gif");
+        saveFuzzedImageWithICCVariants(newImage, @"png", @"bt2020");
+        NSLog(@"BT.2020 wide-gamut fuzzed images saved successfully.");
+    }
+
+    CGContextRelease(ctx);
+    free(rawData);
 }
