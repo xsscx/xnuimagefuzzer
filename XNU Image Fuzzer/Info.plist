@@ -4,7 +4,51 @@
 <dict>
     <key>CFBundleDocumentTypes</key>
     <array>
-        <dict/>
+        <!-- JPEG Document Type -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>JPEG Image</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeIconFiles</key>
+            <array>
+                <string>jpegIcon</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.jpeg</string>
+            </array>
+        </dict>
+        <!-- PNG Document Type -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>PNG Image</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeIconFiles</key>
+            <array>
+                <string>pngIcon</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.png</string>
+            </array>
+        </dict>
+        <!-- GIF Document Type -->
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>GIF Image</string>
+            <key>LSHandlerRank</key>
+            <string>Owner</string>
+            <key>CFBundleTypeIconFiles</key>
+            <array>
+                <string>gifIcon</string>
+            </array>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>com.compuserve.gif</string>
+            </array>
+        </dict>
     </array>
     <key>UIApplicationSceneManifest</key>
     <dict>

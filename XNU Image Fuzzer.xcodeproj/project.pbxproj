@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1DC635162C04111500AC9F74 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1DC635152C04111500AC9F74 /* Assets.xcassets */; };
 		1DE209042B867C4700A3C0D5 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209032B867C4700A3C0D5 /* AppDelegate.m */; };
 		1DE209072B867C4700A3C0D5 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209062B867C4700A3C0D5 /* SceneDelegate.m */; };
 		1DE2090A2B867C4700A3C0D5 /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1DE209092B867C4700A3C0D5 /* ViewController.m */; };
@@ -18,6 +19,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1DC635152C04111500AC9F74 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1DE208FF2B867C4700A3C0D5 /* XNU Image Fuzzer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "XNU Image Fuzzer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1DE209022B867C4700A3C0D5 /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 		1DE209032B867C4700A3C0D5 /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
@@ -63,6 +65,7 @@
 		1DE209012B867C4700A3C0D5 /* XNU Image Fuzzer */ = {
 			isa = PBXGroup;
 			children = (
+				1DC635152C04111500AC9F74 /* Assets.xcassets */,
 				1DE209022B867C4700A3C0D5 /* AppDelegate.h */,
 				1DE209032B867C4700A3C0D5 /* AppDelegate.m */,
 				1DE209052B867C4700A3C0D5 /* SceneDelegate.h */,
@@ -136,6 +139,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1DC635162C04111500AC9F74 /* Assets.xcassets in Resources */,
 				1DE209122B867C4800A3C0D5 /* LaunchScreen.storyboard in Resources */,
 				1DEB07A52B90E40F001AAF5D /* 2225.jpg in Resources */,
 				1DE209382B867CF900A3C0D5 /* Flowers.exr in Resources */,
