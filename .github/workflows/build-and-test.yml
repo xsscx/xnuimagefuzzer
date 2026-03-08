@@ -274,8 +274,8 @@ jobs:
           OUTPUT_DIR="/tmp/fuzzed_images"
           mkdir -p "$OUTPUT_DIR"
 
-          # Boot the simulator (with timeout to prevent hangs)
-          timeout 60 xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
+          # Boot the simulator
+          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
           sleep 5
           # Verify simulator is actually booted
           SIM_STATE=$(xcrun simctl list devices | grep "$SIM_UDID" | grep -o '(Booted)' || true)
@@ -283,7 +283,7 @@ jobs:
             echo "⚠️  Simulator not in Booted state, retrying..."
             xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
             sleep 2
-            timeout 60 xcrun simctl boot "$SIM_UDID" || true
+            xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
             sleep 5
           fi
           echo "✅ Simulator booted"
