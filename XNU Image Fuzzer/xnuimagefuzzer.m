@@ -613,7 +613,6 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg);
 void createBitmapContextIndexedColor(CGImageRef cgImg);
 void createBitmapContextDisplayP3(CGImageRef cgImg);
 void createBitmapContextBT2020(CGImageRef cgImg);
-void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height);
 void applyEnhancedFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void applyEnhancedFuzzingToBitmapContext16Bit(unsigned char *rawData, size_t width, size_t height, BOOL verbose);
 void logPixelData(unsigned char *rawData, size_t width, size_t height, const char *message, BOOL verbose);
@@ -974,42 +973,6 @@ void logPixelData(unsigned char *rawData, size_t width, size_t height, const cha
                 unsigned char decodedChar = (r & 1) | ((g & 1) << 1) | ((b & 1) << 2);
                 NSLog(@"%s - Decoded data from Pixel[%u, %u]: %c", message, randomX, randomY, decodedChar);
             }
-        } else {
-            NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
-        }
-    }
-}
-
-#pragma mark - Random Image Data
-
-/*!
- * @brief Logs information about a random set of pixels from an image's raw data.
- * @details This function is designed to offer a quick diagnostic look at the content of an image by logging the color values of a randomly selected set of pixels. It's particularly useful for debugging and for verifying the effects of image processing algorithms. By providing a message or identifier, developers can contextualize the log output, making it easier to track logs related to specific images or operations. The function provides a high-level overview of pixel data without detailed analysis or decoding.
- *
- * @param rawData The raw pixel data of the image. This should be a pointer to the start of the pixel data array.
- * @param width The width of the image in pixels. This is used to calculate the position of pixels within the raw data array.
- * @param height The height of the image in pixels. Along with width, this determines the total number of pixels that can be logged.
- * @param message A message or identifier to include in the log for context. This helps to identify the log output related to specific images or processing steps.
- */
-void LogRandomPixelData(unsigned char *rawData, size_t width, size_t height, const char *message) {
-    if (!rawData || width == 0 || height == 0) {
-        NSLog(@"%s - Invalid data or dimensions. Logging aborted.", message);
-        return;
-    }
-
-    const int numberOfPixelsToLog = 5; // Number of random pixels to log
-    NSLog(@"%s - Logging %d random pixels:", message, numberOfPixelsToLog);
-
-    for (int i = 0; i < numberOfPixelsToLog; i++) {
-        unsigned int randomX = arc4random_uniform((unsigned int)width);
-        unsigned int randomY = arc4random_uniform((unsigned int)height);
-        size_t pixelIndex = (randomY * width + randomX) * 4; // Assumes 4 bytes per pixel (RGBA)
-
-        if (pixelIndex + 3 < width * height * 4) {
-            NSLog(@"%s - Pixel[%u, %u]: R=%d, G=%d, B=%d, A=%d",
-                  message, randomX, randomY,
-                  rawData[pixelIndex], rawData[pixelIndex + 1],
-                  rawData[pixelIndex + 2], rawData[pixelIndex + 3]);
         } else {
             NSLog(@"%s - Out of bounds pixel access prevented at [%u, %u].", message, randomX, randomY);
         }
@@ -1780,48 +1743,6 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
 
     NSLog(@"Post-encoding corruption: %zu bit flips applied to %lu byte %@ blob", flipCount, (unsigned long)len, format);
     return corrupted;
-}
-
-#pragma mark - applyFuzzingToBitmapContext
-
-/*!
- * @brief Applies fuzzing to the RGB components of each pixel in a bitmap context.
- * @details This function introduces small, random variations to the RGB values of each pixel to test the resilience of image processing algorithms to input data variations. The fuzzing process adjusts the R, G, and B components of each pixel within a specified range, while optionally encoding additional data into the alpha channel of the first row of pixels. This method is useful for evaluating how image processing systems handle slight inconsistencies or errors in visual data.
- *
- * @param rawData Pointer to the bitmap's raw pixel data, modified in-place. Assumes RGBA format, with 4 bytes per pixel. RGB components are randomly adjusted, and the alpha channel of certain pixels may encode additional data.
- * @param width The width of the bitmap in pixels, determining the row length in the data array.
- * @param height The height of the bitmap in pixels, indicating the total number of rows.
- *
- * @note The function iterates over every pixel, applying a random adjustment of -25 to +25 to the RGB values, chosen to introduce noticeable yet non-drastic variations. The alpha channel is generally preserved to maintain transparency, except in the first row where specific pixels might encode data, demonstrating a technique for embedding metadata. This fuzzing aims to reveal how slight data variations affect image processing outcomes, with an optional feature for data encoding that showcases a method for preserving information through image transformations.
- *
- * - Utilizes `arc4random_uniform` for a uniform distribution of fuzz factors, avoiding biases.
- * - Directly modifies the `rawData`, requiring users to back up original data if preservation is needed.
- * - Maintains original transparency for most pixels, focusing visual impact on color variations only.
- */
-void applyFuzzingToBitmapContext(unsigned char *rawData, size_t width, size_t height) {
-    NSLog(@"Beginning fuzzing operation on bitmap context.");
-
-    for (size_t y = 0; y < height; y++) {
-        for (size_t x = 0; x < width; x++) {
-            size_t pixelIndex = (y * width + x) * 4; // 4 bytes per pixel (RGBA)
-            
-            // Fuzzing each color component (R, G, B) within the range of 0-255
-            for (int i = 0; i < 3; i++) { // Looping over R, G, B components
-                // Using arc4random_uniform for a more uniform distribution and to avoid modulo bias
-                int fuzzFactor = (int)arc4random_uniform(51) - 25; // Random number between -25 and 25
-                int newValue = rawData[pixelIndex + i] + fuzzFactor;
-                rawData[pixelIndex + i] = (unsigned char) fmax(0, fmin(255, newValue));
-            }
-            // Alpha (offset + 3) is not altered
-            
-            // Optionally, inject encoded data into the alpha channel for testing purposes
-            if (x < NUMBER_OF_STRINGS && y == 0) { // Simple method to inject data at the start of the image
-                rawData[pixelIndex + 3] = strlen(injectStrings[x]); // Use the length of each string as a simple data point
-            }
-        }
-    }
-    
-    NSLog(@"Fuzzing applied to RGB components of the bitmap context. Injection data encoded in the alpha channel of the first row.");
 }
 
 #pragma mark - Memory Handling
@@ -3807,6 +3728,9 @@ int main(int argc, const char * argv[]) {
             return 0; // Successful completion of command-line image processing
         } else if (argc == 1 || (argc > 2 && argv[1][0] == '-')) {
             // Perform all image permutations if no valid user-provided arguments are present
+            dump_comm_page();
+            dumpDeviceInfo();
+            dumpMacDeviceInfo();
             performAllImagePermutations();
 
             // Flush LLVM coverage data before exit (dlsym, no-op without instrumentation)
