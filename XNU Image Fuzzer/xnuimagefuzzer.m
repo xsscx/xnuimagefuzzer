@@ -2268,9 +2268,20 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
     // Create a color space from the ICC profile data
     CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
     if (!iccColorSpace) {
-        NSLog(@"ICC color space creation failed — embedding raw ICC via re-render fallback");
-        // Fallback: encode the image as-is (no ICC attached)
-        return nil;
+        NSLog(@"ICC color space creation failed — encoding image as-is (fallback)");
+        // Fallback: encode the image in its original color space so the output file
+        // is always created. This ensures mismatch/mutated variant files exist even
+        // when CoreGraphics rejects the synthetic or corrupted ICC data.
+        NSMutableData *outputData = [NSMutableData data];
+        CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+            (CFMutableDataRef)outputData, utType, 1, NULL);
+        if (!dest) return nil;
+
+        CGImageDestinationAddImage(dest, image, NULL);
+        BOOL ok = CGImageDestinationFinalize(dest);
+        CFRelease(dest);
+
+        return ok && [outputData length] > 0 ? outputData : nil;
     }
 
     // Re-render the image through the ICC color space
@@ -2371,8 +2382,72 @@ NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
     static int mismatchCounter = 0;
     int strategy = mismatchCounter++ % 4;
 
-    // Build a synthetic ICC profile header with wrong color space
-    // Minimal valid-looking 128-byte header + empty tag table
+    // Strategies 0-1: Use named color spaces for real color management mismatch.
+    // Strategies 2-3: Use synthetic ICC headers that fail CGColorSpaceCreateWithICCData,
+    // triggering encodeImageWithICCProfile's fallback (encode as-is).
+    switch (strategy) {
+        case 0: {
+            // Display P3 on sRGB content — valid but wrong gamut
+            CGColorSpaceRef p3 = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
+            if (p3) {
+                NSLog(@"ICC mismatch: Display P3 gamut on sRGB content");
+                size_t w = CGImageGetWidth(image);
+                size_t h = CGImageGetHeight(image);
+                CGContextRef ctx = CGBitmapContextCreate(NULL, w, h, 8, w * 4,
+                    p3, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+                CGColorSpaceRelease(p3);
+                if (!ctx) return nil;
+                CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
+                CGImageRef mismatchImage = CGBitmapContextCreateImage(ctx);
+                CGContextRelease(ctx);
+                if (!mismatchImage) return nil;
+
+                NSMutableData *outputData = [NSMutableData data];
+                CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+                    (CFMutableDataRef)outputData, utType, 1, NULL);
+                if (!dest) { CGImageRelease(mismatchImage); return nil; }
+                CGImageDestinationAddImage(dest, mismatchImage, NULL);
+                BOOL ok = CGImageDestinationFinalize(dest);
+                CFRelease(dest);
+                CGImageRelease(mismatchImage);
+                return ok && [outputData length] > 0 ? outputData : nil;
+            }
+            return nil;
+        }
+        case 1: {
+            // AdobeRGB on sRGB content — valid but wrong gamma/gamut
+            CGColorSpaceRef adobeRGB = CGColorSpaceCreateWithName(kCGColorSpaceAdobeRGB1998);
+            if (adobeRGB) {
+                NSLog(@"ICC mismatch: AdobeRGB 1998 gamma on sRGB content");
+                size_t w = CGImageGetWidth(image);
+                size_t h = CGImageGetHeight(image);
+                CGContextRef ctx = CGBitmapContextCreate(NULL, w, h, 8, w * 4,
+                    adobeRGB, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+                CGColorSpaceRelease(adobeRGB);
+                if (!ctx) return nil;
+                CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), image);
+                CGImageRef mismatchImage = CGBitmapContextCreateImage(ctx);
+                CGContextRelease(ctx);
+                if (!mismatchImage) return nil;
+
+                NSMutableData *outputData = [NSMutableData data];
+                CGImageDestinationRef dest = CGImageDestinationCreateWithData(
+                    (CFMutableDataRef)outputData, utType, 1, NULL);
+                if (!dest) { CGImageRelease(mismatchImage); return nil; }
+                CGImageDestinationAddImage(dest, mismatchImage, NULL);
+                BOOL ok = CGImageDestinationFinalize(dest);
+                CFRelease(dest);
+                CGImageRelease(mismatchImage);
+                return ok && [outputData length] > 0 ? outputData : nil;
+            }
+            return nil;
+        }
+        default:
+            break;
+    }
+
+    // Strategies 2-3: Synthetic ICC header (CGColorSpaceCreateWithICCData will reject,
+    // encodeImageWithICCProfile fallback encodes image as-is)
     uint8_t header[132];
     memset(header, 0, sizeof(header));
 
@@ -2386,22 +2461,8 @@ NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
     header[128] = 0; header[129] = 0; header[130] = 0; header[131] = 0;
 
     switch (strategy) {
-        case 0:
-            // CMYK profile on RGB image
-            header[12] = 'p'; header[13] = 'r'; header[14] = 't'; header[15] = 'r'; // prtr
-            header[16] = 'C'; header[17] = 'M'; header[18] = 'Y'; header[19] = 'K'; // CMYK
-            header[20] = 'L'; header[21] = 'a'; header[22] = 'b'; header[23] = ' '; // Lab PCS
-            NSLog(@"ICC mismatch: CMYK profile on RGB image");
-            break;
-        case 1:
-            // Gray profile on RGB image
-            header[12] = 'm'; header[13] = 'n'; header[14] = 't'; header[15] = 'r'; // mntr
-            header[16] = 'G'; header[17] = 'R'; header[18] = 'A'; header[19] = 'Y'; // GRAY
-            header[20] = 'X'; header[21] = 'Y'; header[22] = 'Z'; header[23] = ' '; // XYZ PCS
-            NSLog(@"ICC mismatch: Gray profile on RGB image");
-            break;
         case 2:
-            // Lab profile as device class (abstract)
+            // Abstract Lab profile on RGB image
             header[12] = 'a'; header[13] = 'b'; header[14] = 's'; header[15] = 't'; // abst
             header[16] = 'L'; header[17] = 'a'; header[18] = 'b'; header[19] = ' '; // Lab
             header[20] = 'L'; header[21] = 'a'; header[22] = 'b'; header[23] = ' '; // Lab PCS
@@ -2415,10 +2476,11 @@ NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
             header[20] = 'X'; header[21] = 'Y'; header[22] = 'Z'; header[23] = ' '; // XYZ PCS
             NSLog(@"ICC mismatch: truncated RGB profile (132 of 1024 bytes)");
             break;
+        default:
+            break;
     }
 
     // PCS illuminant D50 at offset 68-79
-    // X=0.9642 Y=1.0000 Z=0.8249 as s15Fixed16Number
     header[68] = 0x00; header[69] = 0x00; header[70] = 0xF6; header[71] = 0xD6; // 0.9642
     header[72] = 0x00; header[73] = 0x01; header[74] = 0x00; header[75] = 0x00; // 1.0000
     header[76] = 0x00; header[77] = 0x00; header[78] = 0xD3; header[79] = 0x2D; // 0.8249
