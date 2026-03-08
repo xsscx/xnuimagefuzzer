@@ -113,3 +113,16 @@ export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:silence_unsigned_overfl
 ls ~/Library/Logs/DiagnosticReports/           # macOS crash reports
 lldb -- /tmp/xnuimagefuzzer                    # interactive debugging
 ```
+
+## iOS Simulator — Benign Log Messages
+
+These messages appear in Xcode console during Simulator runs. They are all harmless
+system framework noise — not from app code. No action needed.
+
+| Message | Source | Why It Appears |
+|---------|--------|---------------|
+| `CLIENT: Failure to determine if this machine is in the process of shutting down, err=1` | configd/powerd | Simulator process lacks Mach port entitlement |
+| `LSPrefs: could not find untranslocated node ... Error Code=1 "Operation not permitted"` | Launch Services | Gatekeeper translocation check fails in Simulator sandbox |
+| `dyld: Symbol not found: _OBJC_CLASS_$_AVPlayerView` | Xcode View Debugger | `libViewDebuggerSupport.dylib` references AVKit class unavailable in iOS runtime |
+| `CGImageBlockCreate: invalid block size` | ImageIO | Expected for edge-case dimensions (1×1, 4096×1) |
+| `deny(1) file-read-data /...` (duetexpertd) | Spotlight | Spotlight indexing tries to read fuzzed images; sandbox blocks it |
