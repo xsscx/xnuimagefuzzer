@@ -17,7 +17,7 @@ configuration to discover crashes, memory safety bugs, and undefined behavior.
 
 ```
 XNU Image Fuzzer/
-├── xnuimagefuzzer.m          # Core fuzzer — 12 bitmap contexts, fuzz permutations
+├── xnuimagefuzzer.m          # Core fuzzer — 15 bitmap contexts, fuzz permutations
 ├── ViewController.m           # UICollectionView displaying fuzzed images
 ├── AppDelegate.m              # App lifecycle, exception handler
 ├── SceneDelegate.{h,m}        # Multi-window scene management
