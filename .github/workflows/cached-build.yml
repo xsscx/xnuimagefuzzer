@@ -83,12 +83,12 @@ jobs:
         id: cache-key
         run: |
           set -euo pipefail
-          # Use git tree hash for deterministic, fast cache keys
-          TREE_HASH=$(git rev-parse HEAD:.)
+          # Use commit SHA for deterministic, fast cache keys (works in shallow clones)
+          COMMIT_SHA=$(git rev-parse --short=12 HEAD)
           XCODE_VERSION=$(xcodebuild -version 2>&1 | sed -n '1p' | tr ' ' '-')
-          echo "tree_hash=${TREE_HASH:0:12}" >> "$GITHUB_OUTPUT"
+          echo "tree_hash=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
           echo "xcode_version=${XCODE_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Cache key: Xcode=${XCODE_VERSION} Tree=${TREE_HASH:0:12}"
+          echo "Cache key: Xcode=${XCODE_VERSION} Commit=${COMMIT_SHA}"
 
       - name: Restore DerivedData cache
         id: cache-restore
