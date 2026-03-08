@@ -467,3 +467,65 @@ jobs:
           git pull --rebase origin main
           git push
           echo "✅ Committed $FILE_COUNT fuzzed images to $DEST_DIR"
+
+  extract-seeds:
+    name: Extract ICC Seeds for CFL
+    runs-on: macos-latest
+    needs: generate-images
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Download fuzzed images
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: fuzzed-images
+          path: /tmp/seed-input
+        continue-on-error: true
+
+      - name: Extract ICC profiles and TIFF seeds
+        run: |
+          set -euo pipefail
+          INPUT_DIR="/tmp/seed-input"
+          OUTPUT_DIR="/tmp/extracted-seeds"
+          mkdir -p "$OUTPUT_DIR"
+
+          TOTAL=$(find "$INPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "Input files: $TOTAL"
+
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "⚠️  No input files for seed extraction"
+            exit 0
+          fi
+
+          python3 contrib/scripts/extract-icc-seeds.py \
+            --input "$INPUT_DIR" \
+            --output "$OUTPUT_DIR" \
+            2>&1 || true
+
+          echo ""
+          echo "── Extracted Seeds ──"
+          ICC_COUNT=$(find "$OUTPUT_DIR/icc" -type f 2>/dev/null | wc -l | tr -d ' ')
+          TIFF_COUNT=$(find "$OUTPUT_DIR/tiff" -type f 2>/dev/null | wc -l | tr -d ' ')
+          echo "ICC profiles: $ICC_COUNT"
+          echo "TIFF files:   $TIFF_COUNT"
+
+          echo "## Seed Extraction" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Input files | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| ICC profiles extracted | $ICC_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| TIFF seeds extracted | $TIFF_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload extracted seeds artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cfl-seeds
+          path: /tmp/extracted-seeds/
+          retention-days: 30
+          if-no-files-found: warn
