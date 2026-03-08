@@ -1,6 +1,10 @@
 # XNU Image Fuzzer
 
-Image fuzzing framework for iOS/macOS targeting CoreGraphics, ImageIO, and ICC profile parsing across 15 bitmap context types and 22 output formats.
+Image fuzzing framework for iOS/macOS targeting CoreGraphics, ImageIO, and ICC profile parsing across 15 bitmap context types and 22+ output formats.
+
+This is the **primary development repository** for the XNU Image Fuzzer. It is used as a
+[git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) in
+[xnuimagetools](https://github.com/xsscx/xnuimagetools) at path `XNU Image Fuzzer/`.
 
 - **PermaLink**: https://srd.cx/xnu-image-fuzzer/
 - **CVE Reference**: https://srd.cx/cve-2022-26730/

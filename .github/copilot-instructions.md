@@ -8,6 +8,10 @@ CMYK, HDR Float16, and Indexed Color), plus structure-aware PNG chunk mutations.
 It exercises Apple's CoreGraphics rendering pipeline across every supported bitmap
 configuration to discover crashes, memory safety bugs, and undefined behavior.
 
+This is the **primary development repository** for the fuzzer. It is used as a
+[git submodule](https://github.com/xsscx/xnuimagetools) in xnuimagetools at path
+`XNU Image Fuzzer/`. Code changes go here first, then the submodule pointer is updated.
+
 - **Language**: Objective-C (main fuzzer), Python (validation scripts)
 - **Platforms**: iOS 14.2+, macOS (Mac Catalyst), iPadOS, visionOS
 - **License**: GPL v3
@@ -22,7 +26,9 @@ XNU Image Fuzzer/
 ├── AppDelegate.m              # App lifecycle, exception handler
 ├── SceneDelegate.{h,m}        # Multi-window scene management
 ├── CMakeLists.txt             # CMake build (iOS arm64, Debug with ASAN)
-├── Info.plist                 # UIFileSharingEnabled=YES
+├── Info.plist                 # JPEG/PNG/GIF doc types, UIFileSharingEnabled=YES
+├── Assets.xcassets            # App icon asset catalog
+├── Readme.md                  # Project readme
 ├── Flowers.exr / 2225.jpg     # Sample input images
 └── Base.lproj/                # Storyboards
 contrib/scripts/
