@@ -589,11 +589,6 @@ NSData* UIImageGIFRepresentation(UIImage *image);
 NSData* generateFuzzedImageData(size_t width, size_t height, CFStringRef imageType);
 void processImage(UIImage *image, int permutation);
 // void performAllImagePermutations(void);
-void addAdditiveNoise(float *pixel);
-void applyMultiplicativeNoise(float *pixel);
-void invertColor(float *pixel);
-void applyExtremeValues(float *pixel);
-void assignSpecialFloatValues(float *pixel);
 void applyColorShift(unsigned char *data, size_t index);
 void applyPixelScramble(unsigned char *data, size_t index);
 void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation);
@@ -3479,8 +3474,11 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
             int numPerms = sizeof(permutations) / sizeof(permutations[0]);
             for (int p = 0; p < numPerms; p++) {
                 int perm = permutations[p];
-                processImage(cleanImage, perm);
-                CGImageRef fuzzedCG = cleanImage.CGImage;
+                // Reload from cleanData each iteration to avoid cumulative mutations
+                UIImage *freshImage = [UIImage imageWithData:cleanData];
+                if (!freshImage) continue;
+                processImage(freshImage, perm);
+                CGImageRef fuzzedCG = freshImage.CGImage;
                 if (!fuzzedCG) continue;
 
                 // Encode fuzzed image into multiple formats
