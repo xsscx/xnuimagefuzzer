@@ -50,6 +50,23 @@ main() → performAllImagePermutations()
 Images are saved as: PNG, JPEG, GIF, BMP, TIFF, HEIF
 using `CGImageDestinationCreateWithURL` with the appropriate UTType.
 
+### Filename Conventions
+
+**xnuimagefuzzer outputs** use `xif-` prefix with SHA-256 hash suffix for collision-free naming:
+```
+xif-{source}-perm{N}[-{variant}]-{hash6}.{ext}
+```
+- `variant`: `icc_{name}`, `no_icc`, `mismatch`, `mutated`
+- `hash6`: first 6 hex chars of SHA-256 of file content
+
+**iOS Image Generator outputs** use `xig-` prefix:
+```
+xig-{context}-{WxH}[-icc_{profile}]-{hash6}.{ext}
+```
+- `context`: short name (stdrgb, premul, gray, 1bit, p3, srgb, adobergb, etc.)
+
+Staged to `fuzz/xnuimagefuzzer/{format}/` and `fuzz/xnuimagegenerator/{format}/`.
+
 ## ICC Variant Generation
 
 Every `saveFuzzedImage()` call for TIFF and PNG outputs automatically triggers
