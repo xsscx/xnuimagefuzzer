@@ -17,6 +17,20 @@ This is the **primary development repository** for the fuzzer. It is used as a
 - **License**: GPL v3
 - **Author**: David Hoyt (@xsscx / @h02332)
 
+## Documentation Map
+
+Detailed instructions are split into specialized files. Copilot loads them
+automatically based on which files you're editing.
+
+| Document | Path | Triggered By |
+|----------|------|-------------|
+| **Build & Run** | `.github/instructions/build-and-run.instructions.md` | Build scripts, CMakeLists.txt, workflows |
+| **Architecture** | `.github/instructions/architecture.instructions.md` | xnuimagefuzzer.m, ViewController.m |
+| **Troubleshooting** | `.github/instructions/troubleshooting.instructions.md` | CI workflows, debugging sessions |
+| **CI Workflow Maintenance** | `.github/prompts/ci-workflow-maintenance.prompt.md` | GitHub Actions workflow files |
+| **Code Review** | `.github/prompts/code-review.prompt.md` | Pull request reviews |
+| **Fuzz & Validate** | `.github/prompts/fuzz-and-validate.prompt.md` | End-to-end test runs |
+
 ## Repository Structure
 
 ```
@@ -28,7 +42,6 @@ XNU Image Fuzzer/
 ├── CMakeLists.txt             # CMake build (iOS arm64, Debug with ASAN)
 ├── Info.plist                 # JPEG/PNG/GIF doc types, UIFileSharingEnabled=YES
 ├── Assets.xcassets            # App icon asset catalog
-├── Readme.md                  # Project readme
 ├── Flowers.exr / 2225.jpg     # Sample input images
 └── Base.lproj/                # Storyboards
 contrib/scripts/
@@ -38,194 +51,30 @@ contrib/scripts/
 └── generate_filmstrip.py      # Side-by-side comparison strips
 .github/
 ├── workflows/                 # 6 CI/CD workflows
+├── instructions/              # Path-specific Copilot instructions
 ├── scripts/sanitize-sed.sh    # Input sanitization for CI
 └── prompts/                   # Copilot prompt templates
 ```
 
-## Build Commands
+## Quick Reference
 
-### Xcode (primary — Mac Catalyst)
+### Build (one-liner)
 ```bash
-xcodebuild build \
-  -project "XNU Image Fuzzer.xcodeproj" \
-  -scheme "XNU Image Fuzzer" \
-  -destination 'platform=macOS,variant=Mac Catalyst' \
-  -configuration Debug \
-  -derivedDataPath /tmp/DerivedData \
-  CODE_SIGN_IDENTITY="-" \
-  CODE_SIGNING_REQUIRED=NO \
-  CODE_SIGNING_ALLOWED=NO \
-  ONLY_ACTIVE_ARCH=YES \
-  GCC_TREAT_WARNINGS_AS_ERRORS=YES
+.github/scripts/build-native.sh           # ASAN+UBSAN+coverage — recommended
 ```
 
-### Xcode (ASAN + UBSAN — sanitizer testing only)
+### Run
 ```bash
-xcodebuild build \
-  -project "XNU Image Fuzzer.xcodeproj" \
-  -scheme "XNU Image Fuzzer" \
-  -destination 'platform=macOS,variant=Mac Catalyst' \
-  -configuration Debug \
-  -derivedDataPath /tmp/DerivedData \
-  CODE_SIGN_IDENTITY="-" \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-  ONLY_ACTIVE_ARCH=YES \
-  GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-  CLANG_ADDRESS_SANITIZER=YES \
-  CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-  OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
+FUZZ_OUTPUT_DIR=/tmp/fuzzed-output timeout 120 /tmp/xnuimagefuzzer
 ```
 
-> **⚠️ Do NOT add `CLANG_ENABLE_CODE_COVERAGE=YES` to xcodebuild Mac Catalyst builds.**
-> Xcode does NOT inject `-fprofile-instr-generate -fcoverage-mapping` for Mac Catalyst.
-> The binary will have ASAN/UBSAN symbols but zero coverage instrumentation.
-> Use the native clang build below for coverage.
-
-### Native clang (ASAN + UBSAN + Coverage — recommended)
+### Validate output
 ```bash
-# Use the build script (handles everything):
-.github/scripts/build-native.sh           # full pipeline: build + run + coverage
-.github/scripts/build-native.sh --build-only  # compile only
-.github/scripts/build-native.sh --run-only    # run existing binary
-
-# Or build manually:
-clang -arch arm64 -target arm64-apple-ios17.2-macabi \
-  -isysroot $(xcrun --show-sdk-path) \
-  -iframework $(xcrun --show-sdk-path)/System/iOSSupport/System/Library/Frameworks \
-  -fobjc-arc -g -O0 -fno-omit-frame-pointer \
-  -fsanitize=address,undefined \
-  -fprofile-instr-generate -fcoverage-mapping \
-  -framework Foundation -framework UIKit -framework CoreGraphics \
-  -framework ImageIO -framework UniformTypeIdentifiers \
-  -I"XNU Image Fuzzer" \
-  "XNU Image Fuzzer"/*.m -o /tmp/xnuimagefuzzer
+python3 contrib/scripts/validate_fuzzed_images.py /tmp/fuzzed-output
 ```
 
-### CMake (alternative)
-```bash
-mkdir xcode_build && cd xcode_build
-cmake -G Xcode ../XNU\ Image\ Fuzzer/CMakeLists.txt
-cmake --build . --config Debug
-```
-
-### Running the built binary
-```bash
-# Locate after build
-BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-  ! -path "*/Contents/Resources/*" | sed -n '1p')
-
-# Run with sanitizers + coverage
-FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
-UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw" \
-  timeout 120 "$BINARY"
-```
-
-## Architecture
-
-### Core Fuzzing Pipeline
-```
-main() → performAllImagePermutations()
-  → for each of 17 seed specs (8×8 to 4096×4096):
-      createBitmapContext*() → fill with fuzz data
-      → CGBitmapContextCreateImage()
-      → saveFuzzedImage(seed) → FUZZ_OUTPUT_DIR/
-        └→ saveFuzzedImageWithICCVariants() (TIFF/PNG only)
-           ├→ encodeImageWithICCProfile()     — real ICC from FUZZ_ICC_DIR
-           ├→ encodeImageStrippingColorSpace() — DeviceRGB, no ICC metadata
-           ├→ encodeImageWithMismatchedProfile() — CMYK/Gray/Lab on RGB
-           └→ mutateICCProfile() + encode      — corrupted ICC profile
-      → applyPostEncodingCorruption(seed) → 6 PNG chunk-level mutations
-      → saveFuzzedImage(corrupted) → FUZZ_OUTPUT_DIR/
-      → processImage(seed, permutation) → save as PNG/JPEG/GIF/TIFF
-  → __llvm_profile_write_file() (if instrumented)
-```
-
-### Post-Encoding Corruption (Structure-Aware)
-6 PNG chunk mutation strategies applied after encoding:
-1. IHDR dimension corruption (width/height = 0 or 0xFFFF)
-2. IDAT stream truncation (50% of data removed)
-3. CRC invalidation on random chunks
-4. Chunk type mangling (swap chunk names)
-5. Extra data injection between chunks
-6. Chunk reordering (move IDAT before IHDR)
-
-### 15 Bitmap Context Types
-| # | Function | Format |
-|---|----------|--------|
-| 1 | createBitmapContextStandardRGB | RGBA premultiplied last |
-| 2 | createBitmapContextPremultipliedFirstAlpha | ARGB premultiplied first |
-| 3 | createBitmapContextNonPremultipliedAlpha | RGBA straight alpha |
-| 4 | createBitmapContext16BitDepth | 16-bit per component |
-| 5 | createBitmapContextGrayscale | 8-bit grayscale |
-| 6 | createBitmapContextHDRFloatComponents | 32-bit float HDR |
-| 7 | createBitmapContextAlphaOnly | Alpha channel only |
-| 8 | createBitmapContext1BitMonochrome | 1-bit black/white |
-| 9 | createBitmapContextBigEndian | Big-endian 32-bit |
-| 10 | createBitmapContextLittleEndian | Little-endian 32-bit |
-| 11 | createBitmapContext8BitInvertedColors | Inverted 8-bit |
-| 12 | createBitmapContext32BitFloat4Component | RGBA 128-bit float |
-| 13 | createBitmapContextCMYK | CMYK with RGB fallback |
-| 14 | createBitmapContextHDRFloat16 | IEEE 754 half-precision edge cases |
-| 15 | createBitmapContextIndexedColor | 5 palette variants with corruption |
-
-### Output Formats
-Images are saved as: PNG, JPEG, GIF, BMP, TIFF, HEIF
-using `CGImageDestinationCreateWithURL` with the appropriate UTType.
-
-### ICC Variant Generation
-
-Every `saveFuzzedImage()` call for TIFF and PNG outputs automatically triggers
-`saveFuzzedImageWithICCVariants()`, which produces up to 4 additional files per image:
-
-| Variant | Function | Description |
-|---------|----------|-------------|
-| Real ICC | `encodeImageWithICCProfile()` | Re-renders through ICC color space via `CGColorSpaceCreateWithICCData()` |
-| Stripped | `encodeImageStrippingColorSpace()` | Re-renders through DeviceRGB — no ICC metadata |
-| Mismatched | `encodeImageWithMismatchedProfile()` | CMYK/Gray/Lab/truncated profile on RGB image |
-| Mutated | `mutateICCProfile()` + encode | 6 corruption strategies on real ICC data |
-
-**API notes:**
-- `kCGImagePropertyICCProfile` does NOT exist in Apple SDKs — do not use it
-- Use `CGColorSpaceCreateWithICCData()` (iOS 10+/macOS 10.12+) to embed ICC profiles
-- xnuimagetools is the source of truth for xnuimagefuzzer.m — always sync after changes
-
-### Environment Variables
-| Variable | Purpose |
-|----------|---------|
-| `FUZZ_OUTPUT_DIR` | Override image output directory (default: app Documents) |
-| `FUZZ_ICC_DIR` | Directory of `.icc`/`.icm` profiles for embedding (round-robin) |
-| `LLVM_PROFILE_FILE` | Coverage profraw output path |
-| `ASAN_OPTIONS` | AddressSanitizer configuration |
-| `UBSAN_OPTIONS` | UBSanitizer configuration |
-
-## Coding Conventions
-
-### Objective-C Style
-- Use `#pragma mark -` sections for code organization
-- ANSI color macros for console output: `MAG`, `BLUE`, `RED`, `GRN`, `YEL`, `CYN`
-- Guard all `CGContextRef` with NULL checks before use
-- Always `CGContextRelease()` and `free()` bitmap data in error paths
-- Use `os_log` and `os_signpost` for structured logging
-- `static int verboseLogging = 0;` controls debug output
-
-### Memory Management
-- Manual retain/release patterns in Core Graphics code
-- `@autoreleasepool` blocks around image generation loops
-- Always pair `CGColorSpaceCreate*` with `CGColorSpaceRelease`
-- Always pair `CGContextRef` creation with release in all code paths
-- Check `malloc()` return values — never assume success
-
-### CGBitmapInfo Correctness
-- Always cast `CGImageAlphaInfo` to `CGBitmapInfo`: `(CGBitmapInfo)kCGImageAlphaPremultipliedLast`
-- Combine with byte order using `|`: `(CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big`
-- Never pass raw `kCGImageAlpha*` constants where `CGBitmapInfo` is expected
-
-### Build Flags
-- `GCC_TREAT_WARNINGS_AS_ERRORS=YES` — all warnings are errors
-- `-Wall -Wextra` for clang builds
-- `-Werror=macro-redefined` will catch duplicate `#define` issues
+See `.github/instructions/build-and-run.instructions.md` for all build variants
+(Xcode, native clang, CMake) and environment variable reference.
 
 ## CI/CD Workflows
 
@@ -244,24 +93,7 @@ Every `saveFuzzedImage()` call for TIFF and PNG outputs automatically triggers
 - `BASH_ENV=/dev/null`, `bash --noprofile --norc`
 - `permissions: contents: read` (least privilege)
 - Concurrency groups with `cancel-in-progress: true`
-- No user-controllable inputs in `run:` blocks
 - Input sanitization via `.github/scripts/sanitize-sed.sh`
-
-### Pinned Action SHAs
-```yaml
-actions/checkout: 11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-actions/upload-artifact: ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-actions/cache: 5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
-actions/download-artifact: d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
-```
-
-## Git Identity
-
-Use bot identity for all commits — never personal info:
-```bash
-git config user.name 'github-actions[bot]'
-git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-```
 
 ## Platform Compatibility
 
@@ -274,133 +106,19 @@ git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 | visionOS 1.x | ✅ | Supported |
 | watchOS | ❌ | Not applicable |
 
+## Git Identity
+
+Use bot identity for all commits — never personal info:
+```bash
+git config user.name 'github-actions[bot]'
+git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+```
+
 ## Quality Validation Scripts
 
-### validate_fuzzed_images.py
-Steganography analysis — checks LSB/MSB for injected attack strings:
-- Buffer overflow patterns
-- XSS payloads
-- SQL injection
-- Format string vulnerabilities
-- XXE injection
-- Path traversal
-
-### read-magic-numbers.py
-Validates 40+ file magic signatures, MIME type checking, HTML report generation.
-
-### compare_image_directories.py
-Cross-device comparison: MSE, SSIM, PSNR, perceptual hash, entropy.
-**Requires**: opencv-python, scikit-image, imagehash, pillow-heif
-
-## Common Issues & Solutions
-
-### Build fails with `-Werror=macro-redefined`
-Duplicate `#define` in xnuimagefuzzer.m. Remove the duplicate.
-
-### Build fails with `-Wenum-conversion`
-Cast `CGImageAlphaInfo` to `CGBitmapInfo`:
-```objc
-CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast;
-```
-
-### Mac Catalyst app exits immediately
-Running the bare Mach-O binary directly doesn't work for Mac Catalyst UIKit apps.
-Must use `open "$APP_BUNDLE"` to properly initialize UIKit.
-
-### Running Mac Catalyst with env vars
-`launchctl setenv` is unreliable. Use `open --env` (macOS 13+):
-```bash
-open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-     --env LLVM_PROFILE_FILE=/tmp/profraw/%m_%p.profraw \
-     "$APP_BUNDLE"
-```
-
-### Coverage report empty (no profraw)
-The app uses `dlsym(RTLD_DEFAULT, "__llvm_profile_write_file")` to resolve
-coverage runtime symbols at runtime — this avoids linker errors on non-instrumented
-builds (iOS Simulator without `-fprofile-instr-generate`). Do NOT use
-`__attribute__((weak)) extern` for these symbols — it works on Mac Catalyst
-but fails on the iOS Simulator linker.
-
-If profraw is still missing:
-1. Verify `LLVM_PROFILE_FILE` env var reaches the process (`open --env`)
-2. Ensure the output directory exists and is writable
-3. The app must exit cleanly (`return 0`) — not be killed by SIGTERM
-
-### SIGPIPE crash in CI
-Never pipe `xcodebuild`, `xcrun`, `ls`, `file`, `find`, or any Apple/BSD CLI
-tools through `| head`. They use NSFileHandle for stdout and crash with
-`NSFileHandleOperationException` (SIGABRT exit 134) or `stdout: Undefined error: 0`
-when the reader closes early. Use these alternatives:
-- `| head -N` → `| sed -n '1,Np'`
-- `| head -1` → `| sed -n '1p'`
-- `| head -cN` → `| cut -c1-N`
-- `| head -2 | tail -1` → `| sed -n '2p'`
-
-### Preserving output with `| tail`
-Bare `| tail` discards everything except the last lines. Use `| tee /tmp/log | tail`
-to preserve full output in a log file while showing a summary in CI:
-```bash
-xcodebuild ... | tee /tmp/xcodebuild.log | tail -5
-```
-
-### No images generated in CI
-Mac Catalyst build uses `open --env` to launch the app. The CI polls for
-≥80 files with a 120s timeout. If the app generates fewer than expected,
-increase the timeout or check if new permutations were added without
-updating the polling threshold.
-
-## Local Development (macOS)
-
-Build with the Xcode command from [Build Commands](#build-commands), then:
-```bash
-APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
-open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
-```
-
-### CoreGraphics debug environment variables
-Key CG debug vars for local fuzzing (Apple-private, surfaces internal errors):
-```bash
-export CG_VERBOSE=1 CG_INFO=1 CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1
-export CGBITMAP_CONTEXT_LOG=1 CGBITMAP_CONTEXT_LOG_ERRORS=1
-export CG_IMAGE_SHOW_MALLOC=1 CG_IMAGE_LOG_FORCE=1 CG_COLOR_CONVERSION_VERBOSE=1
-export IMAGEIO_DEBUG=1
-```
-
-When running via `open --env`, pass each var individually:
-```bash
-open --env CG_VERBOSE=1 --env CGBITMAP_CONTEXT_LOG=1 \
-     --env CG_CONTEXT_SHOW_BACKTRACE_ON_ERROR=1 \
-     --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
-```
-
-### macOS memory debugging
-```bash
-# Malloc guards (independent of ASAN)
-export MallocGuardEdges=1 MallocScribble=1 MallocErrorAbort=1
-export MallocStackLogging=1  # Use with: malloc_history <pid> <addr>
-
-# Zombie objects (use-after-release detection)
-export NSZombieEnabled=YES
-
-# Guard Malloc (extreme — 100x slower, catches single-byte overruns)
-# Native clang builds only (SIP blocks DYLD_INSERT for system binaries)
-DYLD_INSERT_LIBRARIES=/usr/lib/libgmalloc.dylib /tmp/xnuimagefuzzer
-```
-
-### ASAN + UBSAN tuning
-```bash
-export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:detect_stack_use_after_return=1"
-export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:silence_unsigned_overflow=1"
-```
-
-### Crash report collection
-```bash
-ls ~/Library/Logs/DiagnosticReports/           # macOS crash reports
-lldb -- /tmp/xnuimagefuzzer                    # interactive debugging
-```
-
-### Instrumented build + coverage (native clang — recommended)
-```bash
-.github/scripts/build-native.sh      # build + run + coverage report
-```
+| Script | Purpose |
+|--------|---------|
+| `validate_fuzzed_images.py` | Steganography — LSB/MSB injection detection (XSS, SQLi, XXE, path traversal) |
+| `read-magic-numbers.py` | 40+ file magic signatures, MIME type checking, HTML report |
+| `compare_image_directories.py` | MSE, SSIM, PSNR, perceptual hash, entropy (requires opencv-python, scikit-image) |
+| `generate_filmstrip.py` | Side-by-side comparison strips |
