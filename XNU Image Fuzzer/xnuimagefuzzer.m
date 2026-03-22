@@ -2213,7 +2213,10 @@ static NSData *encodeImageWithICCPropertiesOrFallback(CGImageRef image, NSData *
 
     NSDictionary *iccOptions = nil;
     if (iccData) {
-        iccOptions = @{ (__bridge NSString *)kCGImagePropertyICCProfile : iccData };
+        // kCGImagePropertyICCProfile does NOT exist in Apple SDKs.
+        // Use the ImageIO-internal key for ICC data; if ImageIO ignores it,
+        // the fallback to plain encoding (below) handles it gracefully.
+        iccOptions = @{ @"{ICC_Profile}" : iccData };
     }
 
     NSData *encoded = iccOptions ? encodeImageAs(image, utType, iccOptions) : nil;
