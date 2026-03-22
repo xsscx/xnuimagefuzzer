@@ -4,16 +4,18 @@
 #
 # Run CodeQL security analysis on the Objective-C fuzzer code.
 #
-# Architecture: Uses Homebrew LLVM clang for build tracing.
-# macOS 15 SIP strips DYLD_INSERT_LIBRARIES from ALL hardened
-# Mach-O binaries (system clang, xcodebuild), breaking CodeQL's
-# compiler interception. Homebrew LLVM is NOT SIP-hardened, so
-# CodeQL's DYLD tracing works with it.
+# Architecture: Uses macos-14 (Sonoma) where CodeQL DYLD tracing
+# works with xcodebuild. macOS 15 (Sequoia) SIP strips
+# DYLD_INSERT_LIBRARIES from ALL hardened Mach-O binaries
+# (system clang, xcodebuild), breaking CodeQL's compiler
+# interception. macos-14 does not have this restriction.
 # Upstream issue: github/codeql-action#2506
 #
-# Note: CodeQL C/C++ extractor does NOT support .m files in
-# build-mode: none (standalone extraction only finds .c/.cpp).
-# We must use build-mode: manual with an actual compile step.
+# Approaches tried and failed on macOS 15:
+# 1. xcodebuild with build tracing — SIP strips DYLD
+# 2. Direct system clang — also SIP-hardened
+# 3. build-mode: none — extractor ignores .m files
+# 4. Homebrew LLVM clang — DYLD still stripped by SIP shell
 #
 ###############################################################
 
@@ -57,7 +59,7 @@ defaults:
 jobs:
   analyze:
     name: CodeQL Analysis (Objective-C)
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 45
     steps:
       - name: Checkout repository
@@ -71,15 +73,20 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
-      - name: Install Homebrew LLVM (non-SIP-hardened clang)
+      - name: Select Xcode
         run: |
           set -euo pipefail
-          # Homebrew LLVM is not SIP-hardened — CodeQL DYLD tracing works with it
-          brew install llvm 2>&1 | tail -5
-          LLVM_PREFIX="$(brew --prefix llvm)"
-          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
-          echo "Homebrew clang: ${LLVM_PREFIX}/bin/clang"
-          "${LLVM_PREFIX}/bin/clang" --version | sed -n '1p'
+          # Use latest available Xcode on macos-14
+          XCODE_PATH="$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$XCODE_PATH" ]; then
+            echo "::error::No Xcode installation found"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE_PATH"
+          echo "Selected: $XCODE_PATH"
+          xcodebuild -version 2>&1 | sed -n '1,2p'
+          # List available iOS Simulator destinations
+          xcrun simctl list devices available iPhone 2>&1 | grep -m3 "iPhone" || true
 
       - name: Resolve CodeQL query pack dependencies
         run: |
@@ -94,38 +101,39 @@ jobs:
           build-mode: manual
           queries: +security-extended,./codeql-queries
 
-      - name: Build with non-SIP-hardened clang
+      - name: Build with xcodebuild
         run: |
           set -euo pipefail
-          # Use iPhoneOS SDK — source code imports UIKit (iOS framework)
-          SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
-          CLANG="${LLVM_PREFIX}/bin/clang"
-          echo "=== Build Configuration ==="
-          echo "Clang:   ${CLANG}"
-          echo "Sysroot: ${SYSROOT}"
+          # Find an available iOS Simulator device
+          DEVICE_ID="$(xcrun simctl list devices available -j \
+            | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime:
+                  continue
+              for d in devices:
+                  if d.get('isAvailable') and 'iPhone' in d.get('name',''):
+                      print(d['udid'])
+                      sys.exit(0)
+          sys.exit(1)
+          ")"
+          echo "Using simulator: ${DEVICE_ID}"
 
-          # Compile each Objective-C source file
-          # CodeQL intercepts compiler invocations via DYLD_INSERT_LIBRARIES
-          # which works with Homebrew clang (not SIP-hardened)
-          compiled=0
-          for src in "XNU Image Fuzzer"/*.m; do
-            [ -f "$src" ] || continue
-            base="$(basename "$src" .m)"
-            echo "Compiling: $src"
-            "$CLANG" -c -x objective-c \
-              -isysroot "$SYSROOT" \
-              -fmodules \
-              -target arm64-apple-ios15.0 \
-              -I "XNU Image Fuzzer" \
-              -Wno-everything \
-              "$src" -o "/tmp/${base}.o"
-            compiled=$((compiled + 1))
-          done
-          echo "=== Compiled ${compiled} source files ==="
-          if [ "$compiled" -eq 0 ]; then
-            echo "::error::No source files compiled"
-            exit 1
-          fi
+          # Build for iOS Simulator — CodeQL traces clang invocations
+          # via DYLD_INSERT_LIBRARIES (works on macos-14, blocked on macos-15)
+          xcodebuild build \
+            -project "XNU Image Fuzzer.xcodeproj" \
+            -scheme "XNU Image Fuzzer" \
+            -destination "platform=iOS Simulator,id=${DEVICE_ID}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            GCC_TREAT_WARNINGS_AS_ERRORS=NO \
+            2>&1 | sed -n '/error:/p; /warning:/p; /BUILD/p; $p'
+          echo "Build completed with exit code: $?"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
