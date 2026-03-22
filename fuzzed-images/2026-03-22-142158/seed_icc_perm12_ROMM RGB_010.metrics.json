@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.9903195685609054,
+  "input_sha256" : "ccd46100a9112376c6e3de8477b23b4799a7a69957effc4ad0d7f78ce189df04",
+  "output_sha256" : "b297b9ec2d72a7d3afd29df2839467147dda061ad4642aae533247b3190412f2",
+  "input_entropy" : 7.9904977248149693,
+  "output_size" : 32707,
+  "size_delta" : 2393,
+  "input_size" : 30314,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm12_ROMM RGB_010.png",
+  "timestamp" : "2026-03-22 14:21:19"
+}
