@@ -97,7 +97,8 @@ jobs:
       - name: Build with non-SIP-hardened clang
         run: |
           set -euo pipefail
-          SYSROOT="$(xcrun --show-sdk-path)"
+          # Use iPhoneOS SDK — source code imports UIKit (iOS framework)
+          SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)"
           CLANG="${LLVM_PREFIX}/bin/clang"
           echo "=== Build Configuration ==="
           echo "Clang:   ${CLANG}"
@@ -114,7 +115,8 @@ jobs:
             "$CLANG" -c -x objective-c \
               -isysroot "$SYSROOT" \
               -fmodules \
-              -target arm64-apple-macos14.0 \
+              -target arm64-apple-ios15.0 \
+              -I "XNU Image Fuzzer" \
               -Wno-everything \
               "$src" -o "/tmp/${base}.o"
             compiled=$((compiled + 1))
