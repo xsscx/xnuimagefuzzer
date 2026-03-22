@@ -848,6 +848,58 @@ extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t
 
 #pragma mark - MonoSavingFunction
 
+static NSData *encodeMonochromePNG(CGImageRef cgImage) {
+    if (!cgImage) return nil;
+
+    NSData *imageData = encodeImageAs(cgImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
+    if (imageData) return imageData;
+
+    size_t width = CGImageGetWidth(cgImage);
+    size_t height = CGImageGetHeight(cgImage);
+    CGColorSpaceRef graySpace = CGColorSpaceCreateDeviceGray();
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width, graySpace,
+        (CGBitmapInfo)kCGImageAlphaNone);
+    CGColorSpaceRelease(graySpace);
+    if (!ctx) return nil;
+
+    CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImage);
+    CGImageRef fallbackImage = CGBitmapContextCreateImage(ctx);
+    CGContextRelease(ctx);
+    if (!fallbackImage) return nil;
+
+    imageData = encodeImageAs(fallbackImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
+    CGImageRelease(fallbackImage);
+    return imageData;
+}
+
+static void saveMonochromeCGImage(CGImageRef cgImage, NSString *identifier) {
+    if (!cgImage || !identifier || [identifier length] == 0) {
+        NSLog(@"saveMonochromeCGImage: invalid image or identifier");
+        return;
+    }
+
+    NSData *imageData = encodeMonochromePNG(cgImage);
+    if (!imageData) {
+        NSLog(@"Failed to encode monochrome image with identifier %@", identifier);
+        return;
+    }
+
+    NSString *docsDir;
+    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
+    if (envDir) {
+        docsDir = [NSString stringWithUTF8String:envDir];
+    } else {
+        docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    }
+    NSString *filePath = [docsDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", identifier]];
+
+    if ([imageData writeToFile:filePath atomically:YES]) {
+        NSLog(@"Saved monochrome image with identifier %@ at %@", identifier, filePath);
+    } else {
+        NSLog(@"Error saving monochrome image with identifier %@", identifier);
+    }
+}
+
 /*!
  * @brief Saves a monochrome UIImage with a specified identifier to the documents directory.
  * @details This function saves the provided UIImage object as a PNG file in the application's documents directory, using the specified identifier as part of the file name. It's useful for persisting processed images for later retrieval, sharing, or comparison.
@@ -863,55 +915,11 @@ extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t
  * @endcode
  */
 extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
-    if (!image || !identifier || [identifier length] == 0) {
+    if (!image || !image.CGImage || !identifier || [identifier length] == 0) {
         NSLog(@"saveMonochromeImage: invalid image or identifier");
         return;
     }
-
-    NSData *imageData = nil;
-    CGImageRef cgImage = image.CGImage;
-    if (cgImage) {
-        imageData = encodeImageAs(cgImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
-    }
-    if (!imageData) {
-        imageData = UIImagePNGRepresentation(image);
-    }
-    if (!imageData && cgImage) {
-        size_t width = CGImageGetWidth(cgImage);
-        size_t height = CGImageGetHeight(cgImage);
-        CGColorSpaceRef graySpace = CGColorSpaceCreateDeviceGray();
-        CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width, graySpace,
-            (CGBitmapInfo)kCGImageAlphaNone);
-        CGColorSpaceRelease(graySpace);
-        if (ctx) {
-            CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImage);
-            CGImageRef fallbackImage = CGBitmapContextCreateImage(ctx);
-            if (fallbackImage) {
-                imageData = encodeImageAs(fallbackImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
-                CGImageRelease(fallbackImage);
-            }
-            CGContextRelease(ctx);
-        }
-    }
-    if (!imageData) {
-        NSLog(@"Failed to encode monochrome image with identifier %@", identifier);
-        return;
-    }
-
-    NSString *docsDir;
-    const char *envDir = getenv("FUZZ_OUTPUT_DIR");
-    if (envDir) {
-        docsDir = [NSString stringWithUTF8String:envDir];
-    } else {
-        docsDir = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    }
-    NSString *filePath = [docsDir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.png", identifier]];
-    
-    if ([imageData writeToFile:filePath atomically:YES]) {
-        NSLog(@"Saved monochrome image with identifier %@ at %@", identifier, filePath);
-    } else {
-        NSLog(@"Error saving monochrome image with identifier %@", identifier);
-    }
+    saveMonochromeCGImage(image.CGImage, identifier);
 }
 
 #pragma mark - Directory Management
@@ -2200,17 +2208,29 @@ CGColorSpaceRef createNamedColorSpace(int index) {
 
 #pragma mark - ICC Variant Generation
 
+static NSData *encodeImageWithICCPropertiesOrFallback(CGImageRef image, NSData *iccData, CFStringRef utType) {
+    if (!image || !utType) return nil;
+
+    NSDictionary *iccOptions = nil;
+    if (iccData) {
+        iccOptions = @{ (__bridge NSString *)kCGImagePropertyICCProfile : iccData };
+    }
+
+    NSData *encoded = iccOptions ? encodeImageAs(image, utType, iccOptions) : nil;
+    if (encoded) return encoded;
+    return encodeImageAs(image, utType, nil);
+}
+
 /*!
  * @brief Encodes a CGImage with a specific ICC profile embedded via color space re-rendering.
  * @details Creates a CGColorSpace from raw ICC data using CGColorSpaceCreateWithICCData(),
- * re-renders the image through that color space, and encodes the result. ImageIO
- * automatically embeds the ICC profile from the image's color space into the output.
- * This exercises the ICC parsing path in downstream consumers (sips, ColorSync, CFL
- * fuzzers). Only works for 3-component (RGB) ICC profiles.
+ * re-renders the image through that color space when it is RGB-compatible, and encodes
+ * the result. If the ICC cannot be rendered directly, the function falls back to a
+ * metadata/plain encode so the output file still exists for corpus coverage.
  * @param image Source CGImageRef.
  * @param iccData Raw ICC profile bytes to embed.
  * @param utType Output format UTType (PNG, TIFF, JPEG).
- * @return Encoded image data with ICC profile attached, or nil on failure.
+ * @return Encoded image data with ICC profile attached when possible, or fallback-encoded data.
  */
 NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef utType) {
     if (!image || !iccData) return nil;
@@ -2219,19 +2239,7 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
     CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
     if (!iccColorSpace) {
         NSLog(@"ICC color space creation failed — encoding image as-is (fallback)");
-        // Fallback: encode the image in its original color space so the output file
-        // is always created. This ensures mismatch/mutated variant files exist even
-        // when CoreGraphics rejects the synthetic or corrupted ICC data.
-        NSMutableData *outputData = [NSMutableData data];
-        CGImageDestinationRef dest = CGImageDestinationCreateWithData(
-            (CFMutableDataRef)outputData, utType, 1, NULL);
-        if (!dest) return nil;
-
-        CGImageDestinationAddImage(dest, image, NULL);
-        BOOL ok = CGImageDestinationFinalize(dest);
-        CFRelease(dest);
-
-        return ok && [outputData length] > 0 ? outputData : nil;
+        return encodeImageWithICCPropertiesOrFallback(image, nil, utType);
     }
 
     // Re-render the image through the ICC color space
@@ -2241,36 +2249,31 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
 
     // Only re-render for RGB-compatible (3-component) color spaces
     if (nComp != 3) {
-        NSLog(@"ICC profile has %zu components (not RGB) — skipping re-render", nComp);
+        NSLog(@"ICC profile has %zu components (not RGB) — using metadata/plain fallback", nComp);
         CGColorSpaceRelease(iccColorSpace);
-        return nil;
+        return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
     }
 
     CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4,
         iccColorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(iccColorSpace);
-    if (!ctx) return nil;
+    if (!ctx) {
+        NSLog(@"Failed to create ICC bitmap context — using metadata/plain fallback");
+        return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
+    }
 
     CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), image);
     CGImageRef iccImage = CGBitmapContextCreateImage(ctx);
     CGContextRelease(ctx);
-    if (!iccImage) return nil;
-
-    // Encode — ImageIO embeds the ICC profile from the image's color space
-    NSMutableData *outputData = [NSMutableData data];
-    CGImageDestinationRef dest = CGImageDestinationCreateWithData(
-        (CFMutableDataRef)outputData, utType, 1, NULL);
-    if (!dest) {
-        CGImageRelease(iccImage);
-        return nil;
+    if (!iccImage) {
+        NSLog(@"Failed to create re-rendered ICC image — using metadata/plain fallback");
+        return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
     }
 
-    CGImageDestinationAddImage(dest, iccImage, NULL);
-    BOOL ok = CGImageDestinationFinalize(dest);
-    CFRelease(dest);
+    // Encode — ImageIO embeds the ICC profile from the image's color space
+    NSData *outputData = encodeImageWithICCPropertiesOrFallback(iccImage, iccData, utType);
     CGImageRelease(iccImage);
-
-    return ok && [outputData length] > 0 ? outputData : nil;
+    return outputData;
 }
 
 /*!
@@ -4945,12 +4948,9 @@ void createBitmapContext1BitMonochrome(CGImageRef cgImg) {
     if (!newCgImg) {
         NSLog(@"Failed to create CGImage from 1-bit Monochrome context");
     } else {
-        UIImage *newImage = [UIImage imageWithCGImage:newCgImg];
+        saveMonochromeCGImage(newCgImg, @"1Bit_Monochrome");
         CGImageRelease(newCgImg); // Release the created CGImage
-
-        // Save the monochrome image with a context-specific identifier
-        saveMonochromeImage(newImage, @"1Bit_Monochrome");
-        NSLog(@"Modified UIImage with 1-bit Monochrome settings created and saved successfully.");
+        NSLog(@"Modified 1-bit monochrome image created and saved successfully.");
     }
 
     NSLog(@"Bitmap context with 1-bit Monochrome settings created and handled successfully");
