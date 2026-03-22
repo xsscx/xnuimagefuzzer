@@ -77,6 +77,14 @@ concurrency:
 
 ## Build Configuration
 
+## Corpus Validation
+
+For workflow steps that generate fuzz outputs, prefer explicit category assertions over a single total-file threshold.
+
+- If the simulator smoke workflow passes `FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles`, preserve the current 287-file top-level corpus contract unless the generator intentionally changes.
+- Validate regular outputs structurally with `file -b`; only `corrupted_*` files may be intentionally malformed.
+- Do not treat `TOTAL >= N` alone as sufficient validation for this repository.
+
 ### Mac Catalyst Build
 ```yaml
 - name: Build

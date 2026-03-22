@@ -35,14 +35,14 @@ and opportunities to improve fuzzing coverage.
 - [ ] No duplicate `#define` macros
 
 ### Coverage Improvement
-- [ ] All 12 bitmap context types are exercised
-- [ ] Multiple output formats tested (PNG, JPEG, GIF, TIFF, HEIF, BMP)
+- [ ] All 17 bitmap-context permutations are accounted for, or any intentional exclusions are documented
+- [ ] Multiple output formats tested (PNG, JPEG, GIF, TIFF, HEIF, BMP, and pipeline-only encodes where relevant)
 - [ ] Edge cases: zero-size images, maximum-size images
 - [ ] Color space variants: sRGB, Display P3, Generic RGB, Linear
 - [ ] Error handling paths tested
 
 ## Key Files to Review
-1. `XNU Image Fuzzer/xnuimagefuzzer.m` — Core fuzzer (~3200 lines)
+1. `XNU Image Fuzzer/xnuimagefuzzer.m` — Core fuzzer and CLI entry point
 2. `XNU Image Fuzzer/ViewController.m` — Image loading/display
 3. `XNU Image Fuzzer/AppDelegate.m` — Exception handling
 4. `XNU Image Fuzzer/CMakeLists.txt` — Build configuration

@@ -97,7 +97,7 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
  * @note These constants are designed to be used across various components of the application, providing a centralized point of reference for important values and system parameters.
  */
 #define ALL -1 // Special flag for operations applicable to all items or states.
-#define MAX_PERMUTATION 15 // Maximum permutations in image processing.
+#define MAX_PERMUTATION 17 // Maximum permutations in image processing.
 #define MAX_ITERATIONS 10 // Default max chained fuzzing iterations.
 #define NUM_NAMED_COLORSPACES 7 // Named color spaces for diversity permutations.
 #ifdef __arm64__
@@ -863,7 +863,41 @@ extern void convertTo1BitMonochrome(unsigned char *rawData, size_t width, size_t
  * @endcode
  */
 extern void saveMonochromeImage(UIImage *image, NSString *identifier) {
-    NSData *imageData = UIImagePNGRepresentation(image);
+    if (!image || !identifier || [identifier length] == 0) {
+        NSLog(@"saveMonochromeImage: invalid image or identifier");
+        return;
+    }
+
+    NSData *imageData = nil;
+    CGImageRef cgImage = image.CGImage;
+    if (cgImage) {
+        imageData = encodeImageAs(cgImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
+    }
+    if (!imageData) {
+        imageData = UIImagePNGRepresentation(image);
+    }
+    if (!imageData && cgImage) {
+        size_t width = CGImageGetWidth(cgImage);
+        size_t height = CGImageGetHeight(cgImage);
+        CGColorSpaceRef graySpace = CGColorSpaceCreateDeviceGray();
+        CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width, graySpace,
+            (CGBitmapInfo)kCGImageAlphaNone);
+        CGColorSpaceRelease(graySpace);
+        if (ctx) {
+            CGContextDrawImage(ctx, CGRectMake(0, 0, width, height), cgImage);
+            CGImageRef fallbackImage = CGBitmapContextCreateImage(ctx);
+            if (fallbackImage) {
+                imageData = encodeImageAs(fallbackImage, (__bridge CFStringRef)UTTypePNG.identifier, nil);
+                CGImageRelease(fallbackImage);
+            }
+            CGContextRelease(ctx);
+        }
+    }
+    if (!imageData) {
+        NSLog(@"Failed to encode monochrome image with identifier %@", identifier);
+        return;
+    }
+
     NSString *docsDir;
     const char *envDir = getenv("FUZZ_OUTPUT_DIR");
     if (envDir) {
@@ -2734,24 +2768,44 @@ void performChainedFuzzing(NSString *inputPath, int iterations, BOOL allPermutat
             outputData = embedICCProfile(outputData, iccPath, ext);
         }
 
-        // Apply post-encoding corruption only on final iteration
-        // (intermediate outputs must remain decodable for chaining)
-        if (iter == iterations - 1) {
-            outputData = applyPostEncodingCorruption(outputData, ext);
-        }
-
         [outputData writeToFile:outputPath atomically:YES];
         NSLog(@"Chain output saved: %@", outputPath);
 
         // Measure and record metrics
         NSDictionary *metrics = measureOutput(inputData, outputData, outputPath);
         NSMutableDictionary *enriched = [metrics mutableCopy];
+        enriched[@"phase"] = @"chain";
+        enriched[@"source"] = inputBaseName;
         enriched[@"iteration"] = @(iter + 1);
         enriched[@"permutation"] = @(perm);
         enriched[@"injection_index"] = @(injIdx);
         enriched[@"icc_profile"] = iccName ?: @"none";
         [allMetrics addObject:enriched];
         writeMetricsJSON(enriched, outputPath);
+
+        // Keep normal chain outputs decodable and publish intentional corruption separately.
+        if (iter == iterations - 1) {
+            NSData *corruptedData = applyPostEncodingCorruption(outputData, ext);
+            if (corruptedData) {
+                NSString *corruptedInputName = [@"corrupted_" stringByAppendingString:inputBaseName];
+                NSString *corruptedName = provenanceFileName(corruptedInputName, perm, injIdx, iccName, iter + 1, ext);
+                NSString *corruptedPath = [outputDir stringByAppendingPathComponent:corruptedName];
+                [corruptedData writeToFile:corruptedPath atomically:YES];
+                NSLog(@"Corrupted chain output saved: %@", corruptedPath);
+
+                NSDictionary *corruptedMetrics = measureOutput(outputData, corruptedData, corruptedPath);
+                NSMutableDictionary *corruptedEnriched = [corruptedMetrics mutableCopy];
+                corruptedEnriched[@"phase"] = @"chain-corrupted";
+                corruptedEnriched[@"source"] = inputBaseName;
+                corruptedEnriched[@"iteration"] = @(iter + 1);
+                corruptedEnriched[@"permutation"] = @(perm);
+                corruptedEnriched[@"injection_index"] = @(injIdx);
+                corruptedEnriched[@"icc_profile"] = iccName ?: @"none";
+                corruptedEnriched[@"derived_from"] = [outputPath lastPathComponent];
+                [allMetrics addObject:corruptedEnriched];
+                writeMetricsJSON(corruptedEnriched, corruptedPath);
+            }
+        }
 
         // Feed output back as next iteration's input
         currentInputPath = outputPath;

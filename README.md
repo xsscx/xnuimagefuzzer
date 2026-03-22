@@ -1,76 +1,117 @@
 # XNU Image Fuzzer
 
-Image fuzzing framework for iOS/macOS targeting CoreGraphics, ImageIO, and ICC profile parsing across 15 bitmap context types and 22+ output formats.
+Objective-C image fuzzing app and local harness set for exercising Apple image decoding and re-encoding paths through CoreGraphics, ImageIO, ColorSync, and related consumers.
 
-This is the **primary development repository** for the XNU Image Fuzzer. It is used as a
-[git submodule](https://git-scm.com/book/en/v2/Git-Tools-Submodules) in
-[xnuimagetools](https://github.com/xsscx/xnuimagetools) at path `XNU Image Fuzzer/`.
+## What Is In This Repository
 
-- **PermaLink**: https://srd.cx/xnu-image-fuzzer/
-- **CVE Reference**: https://srd.cx/cve-2022-26730/
-- **Author**: David Hoyt — https://xss.cx · https://srd.cx · https://hoyt.net
+- `XNU Image Fuzzer/` contains the iOS app target, bundled sample inputs, and the core fuzzer implementation in `xnuimagefuzzer.m`.
+- `.github/scripts/build-native.sh` builds a native arm64 Mac Catalyst-style helper binary with ASAN, UBSAN, and source-based coverage.
+- `fuzz-apps.sh` feeds generated images into macOS parser consumers such as `sips`, QuickLook, `mdimport`, and `tiffutil`.
+- `fuzz-gallery.py` serves a local WebKit/Safari decode gallery for browser-side exercising.
+- `contrib/scripts/extract-icc-seeds.py` extracts ICC profiles and TIFF seeds from run output for downstream corpus use.
+- `codeql-queries/` contains repository-local CodeQL queries for Objective-C/C security checks.
+- `fuzzed-images/` stores timestamped sample outputs committed by CI runs.
 
-## Workflow
+## Current Behavior
 
-1. Generate baseline images with [xnuimagetools](https://github.com/xsscx/xnuimagetools) (iOS, watchOS, Mac Catalyst)
-2. Fuzz with xnuimagefuzzer (`--pipeline`, `--chain`, `--input-dir`)
-3. Embed ICC profiles (clean + [mutated](https://github.com/xsscx/research/tree/main/colorbleed_tools))
-4. Encode to 22 formats (PNG, JPEG, TIFF×5, HEIC, WebP, JP2, PDF, BMP, GIF, EXR, ICNS, …)
-5. Feed to target apps: Preview, Safari, iMessage, Mail, Notes
-6. Collect crashes from `~/Library/Logs/DiagnosticReports/`
+- `processImage()` supports 17 bitmap-context permutations.
+- The default no-argument mode generates 19 seed specs, saves `seed_*` and `corrupted_*` PNGs, and then runs the matched permutation for each seed.
+- When `FUZZ_ICC_DIR` is set, the default mode also writes `seed_icc_*` PNGs plus real-ICC, mutated-ICC, no-ICC, and ICC-mismatch siblings for PNG/TIFF context outputs.
+- Additional CLI modes are `<imagePath> <permutation>`, `--chain <image>`, `--input-dir <dir>`, and `--pipeline <dir>`.
+- Chained fuzzing now cycles permutations `1..17`; the regular chain output remains decodable and any intentional final corruption is written separately under `corrupted_*`.
+- Metrics are written as `*.metrics.json` sidecars plus `fuzz_metrics_summary.csv`.
+- The checked-in Xcode project targets `iphoneos` and `iphonesimulator` and enables Mac Catalyst.
+- The maintainer also verifies broader GitHub Actions build and output coverage, including watch-related outputs, separately from the local project file declared in this checkout.
 
 ## Quick Start
 
+### Native clang helper
+
 ```bash
-# Xcode
-open "XNU Image Fuzzer.xcodeproj"  # Update Team ID → Run
-
-# CLI (Mac Catalyst, unsigned)
-xcodebuild build \
-  -scheme "XNU Image Fuzzer" \
-  -destination 'platform=macOS,variant=Mac Catalyst' \
-  -configuration Release \
-  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-
-# Pipeline fuzzing (generate → fuzz → ICC embed → measure)
-./XNU\ Image\ Fuzzer --pipeline /path/to/input-images/
+.github/scripts/build-native.sh
 ```
 
-## ICC Variant Generation
+Artifacts land in:
 
-The fuzzer generates 4 ICC profile variants for TIFF/PNG outputs:
+- `/tmp/native-build/xnuimagefuzzer`
+- `/tmp/fuzzed-output/`
+- `/tmp/profraw/`
+- `/tmp/coverage-report/`
 
-| Function | Strategy |
-|----------|----------|
-| `encodeImageWithICCProfile` | Injects ICC profile via `kCGImagePropertyICCProfile` |
-| `encodeImageStrippingColorSpace` | Outputs with DeviceRGB (no ICC) |
-| `encodeImageWithMismatchedProfile` | CMYK/Gray/Lab/truncated ICC on RGB data |
-| Mutated ICC | Bit-flipped ICC profile bytes |
+### Xcode / Mac Catalyst
 
-Use `CGColorSpaceCreateWithICCData()` for ICC embedding — `kCGImagePropertyICCProfile` does NOT exist in Apple SDKs.
+```bash
+xcodebuild build \
+  -project "XNU Image Fuzzer.xcodeproj" \
+  -scheme "XNU Image Fuzzer" \
+  -destination 'platform=macOS,variant=Mac Catalyst' \
+  -configuration Debug \
+  -derivedDataPath /tmp/DerivedData \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO
+```
 
-## CI/CD Workflows
+Launch the built app bundle with `open`, not by executing the Mach-O directly:
 
-| Workflow | Purpose |
-|----------|---------|
-| `build-and-test.yml` | Build, generate images, commit output |
-| `cached-build.yml` | Fast build with DerivedData cache |
-| `code-quality.yml` | ObjC syntax, Python lint, CMake check |
-| `instrumented.yml` | ASAN+UBSAN testing + native clang coverage |
-| `codeql-analysis.yml` | GitHub CodeQL security scanning |
-| `release.yml` | Tag-triggered release with artifacts |
+```bash
+APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
+```
 
-## Platform Support
+### CLI modes
 
-| Platform | Status |
-|----------|--------|
-| macOS 14+ (arm64, x86_64) | ✅ |
-| iOS / iPadOS 18+ | ✅ |
-| visionOS 2.x | ✅ |
+```bash
+/tmp/native-build/xnuimagefuzzer
+/tmp/native-build/xnuimagefuzzer /path/to/image.png 12
+/tmp/native-build/xnuimagefuzzer --chain /path/to/image.png --iterations 3
+/tmp/native-build/xnuimagefuzzer --input-dir /path/to/images --iterations 2
+/tmp/native-build/xnuimagefuzzer --pipeline /path/to/images --iterations 2
+```
 
-## Documentation
+Environment variables:
 
-- [Copilot Instructions](.github/copilot-instructions.md) — build commands, architecture, debug env vars
-- [API Docs](https://xss.cx/public/docs/xnuimagefuzzer/)
-- [XNU Image Tools](https://github.com/xsscx/xnuimagetools) — multi-platform image generator + VideoToolbox fuzzer
-- [Security Research](https://github.com/xsscx/research) — ICC profile analysis, CFL fuzzers, MCP server
+- `FUZZ_OUTPUT_DIR`
+- `FUZZ_ICC_DIR`
+- `LLVM_PROFILE_FILE`
+
+## Output Layout
+
+Default mode writes directly into the output directory:
+
+- `seed_perm##_###.png`
+- `corrupted_perm##_###.png`
+- `seed_icc_perm##_<profile>_###.png` when ICC profiles are available
+- `fuzzed_image_<context>.<ext>` plus ICC, no-ICC, and mismatch variants for PNG and TIFF outputs
+- `corrupted_<input>_perm##_inj##_<icc-or-none>_###.<ext>` for intentionally corrupted final chained outputs
+- `*.metrics.json`
+- `fuzz_metrics_summary.csv`
+
+Pipeline mode adds subdirectories:
+
+- `pipeline-clean`
+- `pipeline-formats`
+- `pipeline-fuzzed`
+- `pipeline-icc`
+- `pipeline-combo`
+- `pipeline-chained`
+- `pipeline-profiles`
+
+## Utilities
+
+- `./fuzz-apps.sh <dir>` exercises macOS parser consumers and captures crash reports.
+- `python3 fuzz-gallery.py <dir>` serves a local gallery for Safari/WebKit decode paths.
+- `python3 contrib/scripts/extract-icc-seeds.py --input <dir> --output <dir>` extracts ICC and TIFF seeds.
+- `python3 read-magic-numbers.py` is an ad hoc report generator that currently uses a hard-coded directory at the bottom of the script.
+- `python3 exr-channel-subsampling-example.py` and `python3 fuzzing-memory-pattern-generator.py` are focused helper scripts, not polished CLIs.
+
+## Notes For Future Work
+
+- `performPipelineFuzzing()` uses a curated subset of 14 permutations and currently skips alpha-only, Display P3, and BT.2020 outputs in its fuzz phase.
+- `saveFuzzedImage()` uses fixed `fuzzed_image_*` names, so repeated default runs overwrite context outputs; provenance-style naming is used for seeds, corrupted outputs, and chained outputs instead.
+- The simulator `build-and-test` workflow now sets `FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles` and validates a 287-file top-level corpus: 19 `seed_perm*.png`, 19 `corrupted_perm*.png`, 19 `seed_icc_perm*.png`, 62 base `fuzzed_image_*` files, 32 each of `_no_icc`, `_icc_mismatch`, real `_icc_<profile>`, and `_icc_mutated` variants, 1 `1Bit_Monochrome.png`, 38 metrics JSON sidecars, and 1 summary CSV with 39 lines.
+- Treat structurally broken files as intentional only when they are named `corrupted_*`. Regular `seed_*`, `seed_icc_*`, `fuzzed_image_*`, and `1Bit_*` outputs are expected to remain decodable.
+
+## License
+
+GPL-3.0-or-later. See `LICENSE`.

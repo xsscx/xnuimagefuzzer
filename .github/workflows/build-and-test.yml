@@ -267,12 +267,14 @@ jobs:
             2>&1 | tee /tmp/xcodebuild-sim.log | tail -5
           echo "✅ Build completed"
 
-      - name: Generate 10 fuzzed images
+      - name: Generate fuzzed image corpus
         run: |
           set -euo pipefail
           SIM_UDID="${{ steps.sim.outputs.sim_udid }}"
           OUTPUT_DIR="/tmp/fuzzed_images"
+          ICC_DIR="/System/Library/ColorSync/Profiles"
           mkdir -p "$OUTPUT_DIR"
+          [ -d "$ICC_DIR" ] || { echo "❌ ICC profile directory missing: $ICC_DIR"; exit 1; }
 
           # Boot the simulator
           xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
@@ -303,8 +305,9 @@ jobs:
           xcrun simctl install "$SIM_UDID" "$APP_PATH"
           echo "✅ App installed"
 
-          # Launch with FUZZ_OUTPUT_DIR via SIMCTL_CHILD_ prefix
+          # Launch with FUZZ_OUTPUT_DIR and FUZZ_ICC_DIR via SIMCTL_CHILD_ prefix
           SIMCTL_CHILD_FUZZ_OUTPUT_DIR="$OUTPUT_DIR" \
+          SIMCTL_CHILD_FUZZ_ICC_DIR="$ICC_DIR" \
             xcrun simctl launch --console-pty "$SIM_UDID" cx.srd.xnuimagefuzzer \
             2>&1 | tail -40 || true
 
@@ -323,10 +326,12 @@ jobs:
             CONTAINER=$(xcrun simctl get_app_container "$SIM_UDID" cx.srd.xnuimagefuzzer data 2>/dev/null || true)
             if [ -n "$CONTAINER" ]; then
               echo "App data container: $CONTAINER"
-              find "$CONTAINER" -name "*.png" -o -name "*.jpg" -o -name "*.gif" 2>/dev/null | sed -n '1,20p'
-              # Copy any found images to output dir
-              find "$CONTAINER" -name "fuzzed_*" -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
-              find "$CONTAINER" -name "1Bit_*" -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
+              find "$CONTAINER" \( -name "*.png" -o -name "*.jpg" -o -name "*.gif" -o -name "*.json" -o -name "*.csv" \) \
+                2>/dev/null | sed -n '1,20p'
+              # Copy any found outputs to the artifact directory
+              find "$CONTAINER" \
+                \( -name "fuzzed_*" -o -name "seed_*" -o -name "corrupted_*" -o -name "1Bit_*" -o -name "*.metrics.json" -o -name "fuzz_metrics_summary.csv" \) \
+                -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
               FILE_COUNT=$(find "$OUTPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
               echo "Files after container scan: $FILE_COUNT"
             fi
@@ -346,23 +351,55 @@ jobs:
           OUTPUT_DIR="/tmp/fuzzed_images"
           ERRORS=0
 
+          check_exact_count() {
+            local label="$1"
+            local actual="$2"
+            local expected="$3"
+            if [ "$actual" -ne "$expected" ]; then
+              echo "❌ $label: expected $expected, got $actual"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "✅ $label: $actual"
+            fi
+          }
+
           echo "=== Image Validation Report ==="
 
-          # Count seed images
-          SEED_COUNT=$(find "$OUTPUT_DIR" -name "seed_*" -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "Seed images: $SEED_COUNT"
+          SEED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
+          CORRUPTED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "corrupted_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
+          SEED_METRICS_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_perm*.metrics.json" 2>/dev/null | wc -l | tr -d ' ')
+          SEED_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_icc_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
+          SEED_ICC_METRICS_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_icc_perm*.metrics.json" 2>/dev/null | wc -l | tr -d ' ')
+          BASE_FUZZED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*" ! -name "*.json" ! -name "*_no_icc.*" ! -name "*_icc_*.*" 2>/dev/null | wc -l | tr -d ' ')
+          NO_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_no_icc.*" 2>/dev/null | wc -l | tr -d ' ')
+          MISMATCH_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_mismatch.*" 2>/dev/null | wc -l | tr -d ' ')
+          REAL_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_*.*" ! -name "*_icc_mismatch.*" ! -name "*_icc_mutated.*" 2>/dev/null | wc -l | tr -d ' ')
+          MUTATED_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_mutated.*" 2>/dev/null | wc -l | tr -d ' ')
+          MONO_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "1Bit_*.png" 2>/dev/null | wc -l | tr -d ' ')
+          SUMMARY_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzz_metrics_summary.csv" 2>/dev/null | wc -l | tr -d ' ')
+          TOTAL_FILE_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
 
-          # Count fuzzed outputs
-          FUZZED_COUNT=$(find "$OUTPUT_DIR" -name "fuzzed_image_*" -type f 2>/dev/null | wc -l | tr -d ' ')
-          MONO_COUNT=$(find "$OUTPUT_DIR" -name "1Bit_*" -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "Fuzzed output images: $FUZZED_COUNT"
-          echo "Monochrome images: $MONO_COUNT"
-          TOTAL=$((SEED_COUNT + FUZZED_COUNT + MONO_COUNT))
-          echo "Total: $TOTAL"
+          check_exact_count "Seed PNGs" "$SEED_COUNT" 19
+          check_exact_count "Corrupted PNGs" "$CORRUPTED_COUNT" 19
+          check_exact_count "Seed metrics JSON" "$SEED_METRICS_COUNT" 19
+          check_exact_count "Seed ICC PNGs" "$SEED_ICC_COUNT" 19
+          check_exact_count "Seed ICC metrics JSON" "$SEED_ICC_METRICS_COUNT" 19
+          check_exact_count "Base fuzzed images" "$BASE_FUZZED_COUNT" 62
+          check_exact_count "No-ICC variants" "$NO_ICC_COUNT" 32
+          check_exact_count "ICC mismatch variants" "$MISMATCH_COUNT" 32
+          check_exact_count "Real ICC variants" "$REAL_ICC_COUNT" 32
+          check_exact_count "Mutated ICC variants" "$MUTATED_ICC_COUNT" 32
+          check_exact_count "Monochrome PNGs" "$MONO_COUNT" 1
+          check_exact_count "Summary CSV files" "$SUMMARY_COUNT" 1
+          check_exact_count "Total files" "$TOTAL_FILE_COUNT" 287
+
+          if [ "$SUMMARY_COUNT" -eq 1 ]; then
+            SUMMARY_LINES=$(wc -l < "$OUTPUT_DIR/fuzz_metrics_summary.csv" | tr -d ' ')
+            check_exact_count "Summary CSV lines" "$SUMMARY_LINES" 39
+          fi
 
           # Validate each file
-          for img in "$OUTPUT_DIR"/*; do
-            [ -f "$img" ] || continue
+          while IFS= read -r -d '' img; do
             fname=$(basename "$img")
             size=$(stat -f%z "$img" 2>/dev/null || stat -c%s "$img" 2>/dev/null || echo "0")
 
@@ -375,20 +412,26 @@ jobs:
             # Check file type via magic bytes
             ftype=$(file -b "$img")
             echo "✅ $fname: ${size} bytes — $ftype"
-          done
+            case "$fname" in
+              corrupted_*.png|*.metrics.json|fuzz_metrics_summary.csv)
+                continue
+                ;;
+            esac
+
+            case "$ftype" in
+              data|*empty*|*corrupt*|*broken*|*invalid*|*cannot*)
+                echo "❌ $fname: regular output is structurally invalid ($ftype)"
+                ERRORS=$((ERRORS + 1))
+                ;;
+            esac
+          done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -print0 | sort -z)
 
           echo "=== Validation Summary ==="
-          if [ "$TOTAL" -lt 10 ]; then
-            echo "⚠️  Expected at least 10 images, got $TOTAL"
-          else
-            echo "✅ Generated $TOTAL images (≥10 target met)"
-          fi
-
           if [ "$ERRORS" -gt 0 ]; then
             echo "❌ $ERRORS validation errors found"
             exit 1
           fi
-          echo "✅ All images validated successfully"
+          echo "✅ Simulator corpus validated successfully"
 
       - name: Upload fuzzed images
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

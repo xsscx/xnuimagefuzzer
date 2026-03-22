@@ -1,28 +1,31 @@
 ---
 name: Fuzz and Validate Images
-description: Build the fuzzer with sanitizers, run it, and validate output quality
+description: Build the fuzzer, run it locally, and inspect the generated artifacts
 ---
 
 # Fuzz and Validate Images
 
-Build XNU Image Fuzzer with ASAN+UBSAN, run the fuzzer on macOS (Mac Catalyst),
-and validate the output images for quality and correctness.
+Build XNU Image Fuzzer, run it locally, and inspect the generated files, crash signals, and coverage artifacts.
 
 ## Steps
 
-### Option A: Native clang build (recommended — ASAN + UBSAN + Coverage)
+### Option A: Native clang helper (recommended)
+
 ```bash
 .github/scripts/build-native.sh
 ```
-This builds with `clang -fsanitize=address,undefined -fprofile-instr-generate -fcoverage-mapping`,
-runs the binary, and generates a coverage report.
 
-### Option B: xcodebuild (ASAN + UBSAN only, no coverage)
+This produces:
 
-> **⚠️ Do NOT add `CLANG_ENABLE_CODE_COVERAGE=YES`** — Xcode does not inject
-> coverage instrumentation for Mac Catalyst. Use Option A for coverage.
+- `/tmp/native-build/xnuimagefuzzer`
+- `/tmp/fuzzed-output/`
+- `/tmp/profraw/`
+- `/tmp/coverage-report/`
 
-1. **Build with sanitizers**
+### Option B: Xcode / Mac Catalyst
+
+1. Build:
+
    ```bash
    xcodebuild build \
      -project "XNU Image Fuzzer.xcodeproj" \
@@ -37,43 +40,76 @@ runs the binary, and generates a coverage report.
      CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES
    ```
 
-2. **Locate the binary**
+2. Locate the app bundle:
+
    ```bash
-   BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-     ! -path "*/Contents/Resources/*" | sed -n '1p')
+   APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
    ```
 
-3. **Run under sanitizers**
+3. Launch it:
+
    ```bash
-   FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-   ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1" \
-   UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-     timeout 120 "$BINARY"
+   open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
    ```
 
-4. **Validate output**
-   - Check each file with `sips -g format -g pixelWidth -g pixelHeight`
-   - Verify non-zero file sizes
-   - Check magic bytes with `file -b`
-   - Run `validate_fuzzed_images.py` for steganography analysis (requires Pillow)
+4. Wait for files to appear, then terminate the app if needed.
 
-5. **Generate coverage report** (Option A only)
-   Coverage report is generated automatically by `build-native.sh`.
-   To generate manually from profraw files:
-   ```bash
-   xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o merged.profdata
-   xcrun llvm-cov report "$BINARY" -instr-profile=merged.profdata
-   ```
+### Optional run modes
+
+```bash
+/tmp/native-build/xnuimagefuzzer /path/to/image.png 12
+/tmp/native-build/xnuimagefuzzer --chain /path/to/image.png --iterations 3
+/tmp/native-build/xnuimagefuzzer --input-dir /path/to/images --iterations 2
+/tmp/native-build/xnuimagefuzzer --pipeline /path/to/images --iterations 2
+```
+
+### Validate the output
+
+- Check file inventory with `find /tmp/fuzzed-output -type f | sed -n '1,40p'`
+- Inspect types with `file -b`
+- Inspect image metadata with `sips -g format -g pixelWidth -g pixelHeight`
+- Run `./fuzz-apps.sh /tmp/fuzzed-output --timeout 15` to exercise macOS parser consumers
+- Run `python3 fuzz-gallery.py /tmp/fuzzed-output --port 8088` for Safari/WebKit decode coverage
+- Run `python3 contrib/scripts/extract-icc-seeds.py --input /tmp/fuzzed-output --output /tmp/extracted-seeds` if you need ICC/TIFF corpus material
+
+If you want to use `read-magic-numbers.py`, update its hard-coded directory before running it.
+
+### Coverage
+
+Coverage is generated automatically by `.github/scripts/build-native.sh`.
+
+Manual commands:
+
+```bash
+xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o /tmp/coverage-report/merged.profdata
+xcrun llvm-cov report /tmp/native-build/xnuimagefuzzer \
+  -instr-profile=/tmp/coverage-report/merged.profdata
+```
 
 ## Expected Output
-- 72+ fuzzed images in various formats (PNG, JPEG, GIF, BMP, TIFF, HEIF)
-- All 12 bitmap context types exercised
-- Zero ASAN/UBSAN findings (or documented known issues)
-- Coverage report showing function/line percentages
+
+- In default no-argument mode with `FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles`, expect this exact top-level shape:
+  - 19 `seed_perm*.png`
+  - 19 `corrupted_perm*.png`
+  - 19 `seed_icc_perm*.png`
+  - 62 base `fuzzed_image_*` files
+  - 32 `_no_icc` files
+  - 32 `_icc_mismatch` files
+  - 32 real `_icc_<profile>` files
+  - 32 `_icc_mutated` files
+  - 1 `1Bit_Monochrome.png`
+  - 38 metrics JSON sidecars
+  - 1 `fuzz_metrics_summary.csv` with 39 lines
+- `*.metrics.json` sidecars and `fuzz_metrics_summary.csv` should be present.
+- Option A should also produce `profraw` files and coverage reports.
+- Chained mode should keep the regular chain output decodable and write any intentional final corruption as a separate `corrupted_*` provenance file.
+- Only `corrupted_*` files are allowed to be structurally invalid or show up as generic `data`.
 
 ## Failure Detection
-- Exit code != 0 → crash or assertion
-- `ERROR: AddressSanitizer` in stderr → memory safety bug (CRITICAL)
-- `runtime error:` in stderr → undefined behavior
-- Zero images produced → app didn't run long enough or crashed early
-- Empty files → image creation failed silently
+
+- non-zero exit code -> crash, assertion, or launch failure
+- `ERROR: AddressSanitizer` -> memory safety bug
+- `runtime error:` -> undefined behavior
+- zero output files -> app did not launch correctly or did not receive `FUZZ_OUTPUT_DIR`
+- empty files -> encoding or save failure
+- regular `seed_*`, `seed_icc_*`, `fuzzed_image_*`, or `1Bit_*` files identified by `file` as generic `data` -> corpus regression

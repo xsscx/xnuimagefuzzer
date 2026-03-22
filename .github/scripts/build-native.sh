@@ -15,8 +15,8 @@
 #   .github/scripts/build-native.sh --run-only    # run pre-built binary
 #
 # Output:
-#   /tmp/native-build/xnuimagefuzzer              # instrumented binary
-#   /tmp/fuzzed-output/                           # 88 fuzzed images
+#   /tmp/native-build/xnuimagefuzzer              # instrumented helper binary
+#   /tmp/fuzzed-output/                           # fuzzed outputs, ICC variants, metrics, pipeline artifacts
 #   /tmp/profraw/                                 # coverage profraw
 #   /tmp/coverage-report/                         # llvm-cov reports
 #
@@ -100,8 +100,8 @@ do_run() {
   # Clean stale data
   rm -f "$PROFRAW_DIR"/*.profraw "$FUZZ_DIR"/*
 
-  # Phase 1: Default mode — all 15 bitmap contexts + ICC variants
-  echo "── Phase 1: Default mode (all permutations) ──"
+  # Phase 1: Default mode — 19 seed specs routed through the current default permutation set
+  echo "── Phase 1: Default mode (seed generation + matched permutations) ──"
   FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
   FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
   LLVM_PROFILE_FILE="$PROFRAW_DIR/fuzzer-%m_%p.profraw" \
@@ -146,6 +146,37 @@ do_run() {
   UBSAN_HITS="${UBSAN_HITS:-0}"
   if [ "$ASAN_HITS" -gt 0 ]; then echo "⚠️  ASAN findings: $ASAN_HITS"; fi
   if [ "$UBSAN_HITS" -gt 0 ]; then echo "⚠️  UBSAN findings: $UBSAN_HITS"; fi
+
+  MONO_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name '1Bit_*.png' 2>/dev/null | wc -l | tr -d ' ')
+  REAL_ICC_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name 'fuzzed_image_*_icc_*.*' ! -name '*_icc_mismatch.*' ! -name '*_icc_mutated.*' 2>/dev/null | wc -l | tr -d ' ')
+  MUTATED_ICC_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name 'fuzzed_image_*_icc_mutated.*' 2>/dev/null | wc -l | tr -d ' ')
+
+  echo "Top-level monochrome outputs: $MONO_COUNT"
+  echo "Top-level real ICC outputs:   $REAL_ICC_COUNT"
+  echo "Top-level mutated ICC outputs:$MUTATED_ICC_COUNT"
+
+  [ "$MONO_COUNT" -gt 0 ] || die "No monochrome outputs produced in default mode"
+  [ "$REAL_ICC_COUNT" -gt 0 ] || die "No real ICC variants produced in default mode"
+  [ "$MUTATED_ICC_COUNT" -gt 0 ] || die "No mutated ICC variants produced in default mode"
+
+  BAD_REGULAR_OUTPUTS=$(
+    find "$FUZZ_DIR" -maxdepth 1 -type f \
+      \( -name 'seed_*.png' -o -name 'seed_icc_*.png' -o -name 'fuzzed_image_*' -o -name '1Bit_*.png' \) \
+      ! -name '*.json' -print0 2>/dev/null | \
+    while IFS= read -r -d '' f; do
+      t=$(file -b "$f")
+      case "$t" in
+        data|*empty*|*corrupt*|*broken*|*invalid*|*cannot*)
+          printf '%s\t%s\n' "$(basename "$f")" "$t"
+          ;;
+      esac
+    done
+  )
+  if [ -n "$BAD_REGULAR_OUTPUTS" ]; then
+    echo "❌ Structurally broken regular outputs detected:"
+    echo "$BAD_REGULAR_OUTPUTS"
+    die "Regular outputs must remain decodable; only corrupted_* files may be structurally invalid"
+  fi
 
   [ "$FILE_COUNT" -ge 80 ] || echo "⚠️ Expected ≥80 fuzzed files, got $FILE_COUNT (ICC paths may need FUZZ_ICC_DIR)"
   [ "$PROFRAW_COUNT" -gt 0 ] || die "No profraw files — coverage collection failed"

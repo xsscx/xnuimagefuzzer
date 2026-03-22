@@ -1,6 +1,25 @@
 # Build & Run — XNU Image Fuzzer
 
-## Xcode (primary — Mac Catalyst)
+## Recommended Path: Native Clang Helper
+
+The fastest local way to get a runnable binary with sanitizers and coverage is:
+
+```bash
+.github/scripts/build-native.sh
+.github/scripts/build-native.sh --build-only
+.github/scripts/build-native.sh --run-only
+```
+
+This script builds `/tmp/native-build/xnuimagefuzzer`, runs it directly, writes fuzzed output to `/tmp/fuzzed-output`, and generates coverage artifacts in `/tmp/coverage-report`.
+
+The helper now also validates the default-mode top-level corpus before reporting success:
+
+- at least one `1Bit_Monochrome.png`
+- non-zero real ICC and mutated ICC variant counts
+- no structurally broken regular top-level outputs; only `corrupted_*` files may be malformed
+
+## Xcode / Mac Catalyst Build
+
 ```bash
 xcodebuild build \
   -project "XNU Image Fuzzer.xcodeproj" \
@@ -15,7 +34,26 @@ xcodebuild build \
   GCC_TREAT_WARNINGS_AS_ERRORS=YES
 ```
 
-## Xcode (ASAN + UBSAN — sanitizer testing only)
+### Launching The Xcode-Built App
+
+For Xcode-built Mac Catalyst output, launch the `.app` bundle with `open`. Do not rely on directly executing the Mach-O inside the bundle.
+
+```bash
+APP=$(find /tmp/DerivedData -name "XNU Image Fuzzer.app" -type d | sed -n '1p')
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output "$APP"
+```
+
+If you need extra environment variables:
+
+```bash
+open --env FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
+     --env FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles \
+     --env LLVM_PROFILE_FILE=/tmp/profraw/fuzzer-%m_%p.profraw \
+     "$APP"
+```
+
+## Xcode Sanitizer Build
+
 ```bash
 xcodebuild build \
   -project "XNU Image Fuzzer.xcodeproj" \
@@ -24,7 +62,8 @@ xcodebuild build \
   -configuration Debug \
   -derivedDataPath /tmp/DerivedData \
   CODE_SIGN_IDENTITY="-" \
-  CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
   ONLY_ACTIVE_ARCH=YES \
   GCC_TREAT_WARNINGS_AS_ERRORS=YES \
   CLANG_ADDRESS_SANITIZER=YES \
@@ -32,22 +71,14 @@ xcodebuild build \
   OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer'
 ```
 
-> **⚠️ Do NOT add `CLANG_ENABLE_CODE_COVERAGE=YES` to xcodebuild Mac Catalyst builds.**
-> Xcode does NOT inject `-fprofile-instr-generate -fcoverage-mapping` for Mac Catalyst.
-> The binary will have ASAN/UBSAN symbols but zero coverage instrumentation.
-> Use the native clang build below for coverage.
+> Do not add `CLANG_ENABLE_CODE_COVERAGE=YES` to the Mac Catalyst `xcodebuild` path. Coverage is handled by the native clang helper instead.
 
-## Native clang (ASAN + UBSAN + Coverage — recommended)
+## Manual Native Clang Build
+
 ```bash
-# Use the build script (handles everything):
-.github/scripts/build-native.sh           # full pipeline: build + run + coverage
-.github/scripts/build-native.sh --build-only  # compile only
-.github/scripts/build-native.sh --run-only    # run existing binary
-
-# Or build manually:
 clang -arch arm64 -target arm64-apple-ios17.2-macabi \
-  -isysroot $(xcrun --show-sdk-path) \
-  -iframework $(xcrun --show-sdk-path)/System/iOSSupport/System/Library/Frameworks \
+  -isysroot "$(xcrun --show-sdk-path)" \
+  -iframework "$(xcrun --show-sdk-path)/System/iOSSupport/System/Library/Frameworks" \
   -fobjc-arc -g -O0 -fno-omit-frame-pointer \
   -fsanitize=address,undefined \
   -fprofile-instr-generate -fcoverage-mapping \
@@ -57,46 +88,58 @@ clang -arch arm64 -target arm64-apple-ios17.2-macabi \
   "XNU Image Fuzzer"/*.m -o /tmp/xnuimagefuzzer
 ```
 
-## CMake (alternative)
+This output is a directly runnable helper binary, unlike the Xcode-built `.app` bundle path above.
+
+## Run Modes
+
 ```bash
-mkdir xcode_build && cd xcode_build
-cmake -G Xcode ../XNU\ Image\ Fuzzer/CMakeLists.txt
-cmake --build . --config Debug
+/tmp/native-build/xnuimagefuzzer
+/tmp/native-build/xnuimagefuzzer /path/to/image.png 12
+/tmp/native-build/xnuimagefuzzer --chain /path/to/image.png --iterations 3
+/tmp/native-build/xnuimagefuzzer --input-dir /path/to/images --iterations 2
+/tmp/native-build/xnuimagefuzzer --pipeline /path/to/images --iterations 2
 ```
-
-## Running the built binary
-```bash
-# Locate after build
-BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-  ! -path "*/Contents/Resources/*" | sed -n '1p')
-
-# Run with sanitizers + coverage
-FUZZ_OUTPUT_DIR=/tmp/fuzzed-output \
-ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
-UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-LLVM_PROFILE_FILE="/tmp/profraw/fuzzer-%m_%p.profraw" \
-  timeout 120 "$BINARY"
-```
-
-## Build Flags
-- `GCC_TREAT_WARNINGS_AS_ERRORS=YES` — all warnings are errors
-- `-Wall -Wextra` for clang builds
-- `-Werror=macro-redefined` will catch duplicate `#define` issues
 
 ## Environment Variables
+
 | Variable | Purpose |
 |----------|---------|
-| `FUZZ_OUTPUT_DIR` | Override image output directory (default: app Documents) |
-| `FUZZ_ICC_DIR` | Directory of `.icc`/`.icm` profiles for embedding (round-robin) |
+| `FUZZ_OUTPUT_DIR` | Override image output directory |
+| `FUZZ_ICC_DIR` | Directory of `.icc` and `.icm` profiles for embedding |
 | `LLVM_PROFILE_FILE` | Coverage profraw output path |
 | `ASAN_OPTIONS` | AddressSanitizer configuration |
 | `UBSAN_OPTIONS` | UBSanitizer configuration |
 
-## Coverage Instrumentation
-- Uses clang source-based coverage: `-fprofile-instr-generate -fcoverage-mapping`
-- The app uses `dlsym(RTLD_DEFAULT, "__llvm_profile_write_file")` to resolve
-  coverage runtime symbols at runtime — avoids linker errors on non-instrumented builds
-- Do NOT use `__attribute__((weak)) extern` — works on Mac Catalyst but fails on iOS Simulator linker
-- Collect: `LLVM_PROFILE_FILE=/tmp/profraw/fuzzer-%m_%p.profraw ./binary`
-- Merge: `llvm-profdata merge -sparse *.profraw -o merged.profdata`
-- Report: `llvm-cov report ./binary -instr-profile=merged.profdata`
+## CI-Style Corpus Expectations
+
+When default mode runs with `FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles`, the simulator workflow expects this exact top-level output shape:
+
+- 19 `seed_perm*.png`
+- 19 `corrupted_perm*.png`
+- 19 `seed_icc_perm*.png`
+- 62 base `fuzzed_image_*` files
+- 32 `_no_icc` files
+- 32 `_icc_mismatch` files
+- 32 real `_icc_<profile>` files
+- 32 `_icc_mutated` files
+- 1 `1Bit_Monochrome.png`
+- 38 metrics JSON sidecars
+- 1 `fuzz_metrics_summary.csv` with 39 lines
+
+## Coverage
+
+- Native clang builds use source-based coverage: `-fprofile-instr-generate -fcoverage-mapping`.
+- The code resolves `__llvm_profile_write_file` and `__llvm_profile_set_filename` with `dlsym()` to avoid linker failures on non-instrumented builds.
+- Do not switch to `__attribute__((weak)) extern` for those runtime symbols.
+
+Manual coverage commands:
+
+```bash
+xcrun llvm-profdata merge -sparse /tmp/profraw/*.profraw -o /tmp/coverage-report/merged.profdata
+xcrun llvm-cov report /tmp/native-build/xnuimagefuzzer \
+  -instr-profile=/tmp/coverage-report/merged.profdata
+```
+
+## CMake
+
+`XNU Image Fuzzer/CMakeLists.txt` is an experimental alternative and is not a feature-for-feature mirror of the Xcode app target. Use it only when you specifically need that path.
