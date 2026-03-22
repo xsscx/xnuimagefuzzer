@@ -166,6 +166,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: cpp
+          packs: +./codeql-queries
 
       - name: Build for CodeQL
         run: |
@@ -188,7 +189,6 @@ jobs:
           category: custom-security
           output: custom-results
           upload: always
-          packs: +./codeql-queries
 
       - name: Summarize custom query results
         if: always()
