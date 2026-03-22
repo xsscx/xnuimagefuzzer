@@ -121,6 +121,7 @@ Workflow-specific invariants worth remembering:
 
 - `build-and-test` now passes `FUZZ_ICC_DIR=/System/Library/ColorSync/Profiles` and validates an exact 287-file top-level simulator corpus with a 39-line summary CSV.
 - `.github/scripts/build-native.sh` now fails if default-mode monochrome output is missing, if real/mutated ICC variants are missing, or if any regular top-level output is structurally invalid.
+- `.github/scripts/build-native.sh` is Bash-specific; invoke it with `bash` or via its shebang, not with `sh`.
 - Only `corrupted_*` files are allowed to be generic `data` or otherwise structurally broken.
 
 Pipeline runs also create:

@@ -10,6 +10,8 @@ The fastest local way to get a runnable binary with sanitizers and coverage is:
 .github/scripts/build-native.sh --run-only
 ```
 
+Invoke the helper as an executable or with `bash`. Do not run `sh .github/scripts/build-native.sh`; it is intentionally Bash-specific.
+
 This script builds `/tmp/native-build/xnuimagefuzzer`, runs it directly, writes fuzzed output to `/tmp/fuzzed-output`, and generates coverage artifacts in `/tmp/coverage-report`.
 
 The helper now also validates the default-mode top-level corpus before reporting success:

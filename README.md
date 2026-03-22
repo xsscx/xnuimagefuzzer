@@ -5,7 +5,7 @@ Objective-C image fuzzing app and local harness set for exercising Apple image d
 ## What Is In This Repository
 
 - `XNU Image Fuzzer/` contains the iOS app target, bundled sample inputs, and the core fuzzer implementation in `xnuimagefuzzer.m`.
-- `.github/scripts/build-native.sh` builds a native arm64 Mac Catalyst-style helper binary with ASAN, UBSAN, and source-based coverage.
+- `.github/scripts/build-native.sh` is a Bash helper that builds a native arm64 Mac Catalyst-style binary with ASAN, UBSAN, and source-based coverage.
 - `fuzz-apps.sh` feeds generated images into macOS parser consumers such as `sips`, QuickLook, `mdimport`, and `tiffutil`.
 - `fuzz-gallery.py` serves a local WebKit/Safari decode gallery for browser-side exercising.
 - `contrib/scripts/extract-icc-seeds.py` extracts ICC profiles and TIFF seeds from run output for downstream corpus use.
@@ -30,6 +30,8 @@ Objective-C image fuzzing app and local harness set for exercising Apple image d
 ```bash
 .github/scripts/build-native.sh
 ```
+
+Run it as an executable or with `bash`. Do not invoke it with `sh`; the helper uses Bash syntax.
 
 Artifacts land in:
 

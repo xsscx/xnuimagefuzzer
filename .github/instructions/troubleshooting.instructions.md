@@ -33,6 +33,10 @@ The binary produced by `.github/scripts/build-native.sh` is intended to run dire
 FUZZ_OUTPUT_DIR=/tmp/fuzzed-output /tmp/native-build/xnuimagefuzzer
 ```
 
+### Running `.github/scripts/build-native.sh` with `sh` reports syntax errors
+
+Run the helper as `./.github/scripts/build-native.sh` or `bash .github/scripts/build-native.sh`. Do not use `sh`; the script relies on Bash syntax.
+
 ### Passing environment variables
 
 `launchctl setenv` is inconsistent for local Mac Catalyst work. Prefer `open --env` when launching the Xcode-built app bundle:

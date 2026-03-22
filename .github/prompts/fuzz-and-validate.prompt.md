@@ -15,6 +15,8 @@ Build XNU Image Fuzzer, run it locally, and inspect the generated files, crash s
 .github/scripts/build-native.sh
 ```
 
+Run the helper as an executable or with `bash`. Do not invoke it with `sh`; it is a Bash script.
+
 This produces:
 
 - `/tmp/native-build/xnuimagefuzzer`

@@ -165,11 +165,9 @@ do_run() {
       ! -name '*.json' -print0 2>/dev/null | \
     while IFS= read -r -d '' f; do
       t=$(file -b "$f")
-      case "$t" in
-        data|*empty*|*corrupt*|*broken*|*invalid*|*cannot*)
-          printf '%s\t%s\n' "$(basename "$f")" "$t"
-          ;;
-      esac
+      if [ "$t" = "data" ] || printf '%s\n' "$t" | grep -Eiq 'empty|corrupt|broken|invalid|cannot'; then
+        printf '%s\t%s\n' "$(basename "$f")" "$t"
+      fi
     done
   )
   if [ -n "$BAD_REGULAR_OUTPUTS" ]; then

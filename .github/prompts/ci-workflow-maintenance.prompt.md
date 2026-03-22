@@ -138,6 +138,8 @@ CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES
 # 1. Build with native clang (not xcodebuild)
 .github/scripts/build-native.sh
 
+# Invoke it with bash or via its shebang, never with sh.
+
 # Or manually:
 clang -arch arm64 -target arm64-apple-ios17.2-macabi \
   -isysroot $(xcrun --show-sdk-path) \
