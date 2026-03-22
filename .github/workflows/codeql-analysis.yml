@@ -4,13 +4,11 @@
 #
 # Run CodeQL security analysis on the Objective-C fuzzer code.
 #
-# Architecture: Uses direct clang invocation instead of xcodebuild
-# because macOS 15 + Xcode 16 SIP strips DYLD_INSERT_LIBRARIES from
-# xcodebuild sandboxed child processes, breaking CodeQL C/C++ tracing.
-# Upstream: https://github.com/github/codeql-action/issues/2506
-#
-# Direct clang compilation bypasses SIP sandbox restrictions entirely.
-# CodeQL traces clang process directly — no DYLD injection needed.
+# Architecture: Uses build-mode: none to analyze source directly
+# without compilation tracing. macOS 15 SIP strips DYLD_INSERT_LIBRARIES
+# from ALL hardened binaries (clang, xcodebuild), making build tracing
+# impossible. build-mode: none creates the CodeQL database directly
+# from source files. Upstream: github/codeql-action#2506
 #
 ###############################################################
 
@@ -77,31 +75,9 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: cpp
+          languages: c-cpp
+          build-mode: none
           queries: +security-extended,./codeql-queries
-
-      - name: Build with direct clang (bypasses SIP/xcodebuild tracing issue)
-        run: |
-          set -euo pipefail
-
-          # Use iOS Simulator SDK for framework headers
-          SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
-          echo "SDK: ${SDK_PATH}"
-
-          # Compile each .m file with direct clang invocation
-          # CodeQL traces clang directly — no DYLD_INSERT_LIBRARIES needed
-          for src in "XNU Image Fuzzer"/*.m; do
-            echo "Compiling: ${src}"
-            clang -c -fobjc-arc -x objective-c \
-              -isysroot "${SDK_PATH}" \
-              -target arm64-apple-ios17.0-simulator \
-              -fmodules \
-              -I "XNU Image Fuzzer" \
-              -Wno-everything \
-              -o "/tmp/$(basename "${src}" .m).o" \
-              "${src}"
-          done
-          echo "✅ Direct clang build completed — CodeQL tracing active"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
