@@ -4,44 +4,37 @@
 #
 # Run CodeQL security analysis on the Objective-C fuzzer code.
 #
-# STATUS: DISABLED — CodeQL C/C++ extractor cannot trace xcodebuild
-# on macOS 15 + Xcode 16 (SIP strips DYLD_INSERT_LIBRARIES from
-# sandboxed child processes). All runs fail with:
-#   "CodeQL detected code written in C/C++ but could not process any of it"
+# Architecture: Uses direct clang invocation instead of xcodebuild
+# because macOS 15 + Xcode 16 SIP strips DYLD_INSERT_LIBRARIES from
+# xcodebuild sandboxed child processes, breaking CodeQL C/C++ tracing.
 # Upstream: https://github.com/github/codeql-action/issues/2506
-# TODO: Re-enable when CodeQL supports Xcode 16 tracing, or rewrite
-#       build step to use direct clang invocation.
+#
+# Direct clang compilation bypasses SIP sandbox restrictions entirely.
+# CodeQL traces clang process directly — no DYLD injection needed.
 #
 ###############################################################
 
 name: xnuimagefuzzer-codeql-analysis
 
-# --- All triggers disabled until CodeQL/Xcode 16 issue is resolved ---
-# on:
-#   push:
-#     branches: [main, master]
-#     paths:
-#       - '**/*.m'
-#       - '**/*.h'
-#       - 'codeql-queries/**'
-#       - 'codeql-config.yml'
-#   pull_request:
-#     branches: [main, master]
-#     paths:
-#       - '**/*.m'
-#       - '**/*.h'
-#       - 'codeql-queries/**'
-#       - 'codeql-config.yml'
-#   schedule:
-#     - cron: '30 6 * * 1'
-#   workflow_dispatch:
 on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - 'codeql-queries/**'
+      - 'codeql-config.yml'
+      - '.github/workflows/codeql-analysis.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**/*.m'
+      - '**/*.h'
+      - 'codeql-queries/**'
+      - 'codeql-config.yml'
+  schedule:
+    - cron: '30 6 * * 1'
   workflow_dispatch:
-    inputs:
-      force_run:
-        description: 'Force run (CodeQL is currently broken with Xcode 16)'
-        required: false
-        default: 'false'
 
 permissions:
   contents: read
@@ -59,7 +52,7 @@ defaults:
     shell: bash --noprofile --norc {0}
 
 jobs:
-  analyze-objc:
+  analyze:
     name: CodeQL Analysis (Objective-C)
     runs-on: macos-latest
     timeout-minutes: 30
@@ -75,27 +68,40 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
+      - name: Resolve CodeQL query pack dependencies
+        run: |
+          set -euo pipefail
+          cd codeql-queries
+          codeql pack install 2>&1 || echo "⚠️ codeql pack install failed — will try without"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: cpp
-          config-file: codeql-config.yml
-          queries: +security-extended
+          queries: +security-extended,./codeql-queries
 
-      - name: Build for CodeQL
+      - name: Build with direct clang (bypasses SIP/xcodebuild tracing issue)
         run: |
           set -euo pipefail
-          xcodebuild build \
-            -project "XNU Image Fuzzer.xcodeproj" \
-            -scheme "XNU Image Fuzzer" \
-            -destination "generic/platform=iOS Simulator" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            2>&1 | sed -n '1,10p;$p'
-          echo "✅ Build for CodeQL completed"
+
+          # Use iOS Simulator SDK for framework headers
+          SDK_PATH="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          echo "SDK: ${SDK_PATH}"
+
+          # Compile each .m file with direct clang invocation
+          # CodeQL traces clang directly — no DYLD_INSERT_LIBRARIES needed
+          for src in "XNU Image Fuzzer"/*.m; do
+            echo "Compiling: ${src}"
+            clang -c -fobjc-arc -x objective-c \
+              -isysroot "${SDK_PATH}" \
+              -target arm64-apple-ios17.0-simulator \
+              -fmodules \
+              -I "XNU Image Fuzzer" \
+              -Wno-everything \
+              -o "/tmp/$(basename "${src}" .m).o" \
+              "${src}"
+          done
+          echo "✅ Direct clang build completed — CodeQL tracing active"
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -120,7 +126,7 @@ jobs:
           for run in data.get('runs', []):
               results = run.get('results', [])
               print(f'Total findings: {len(results)}')
-              for r in results[:20]:
+              for r in results[:30]:
                   rule = r.get('ruleId', 'unknown')
                   msg = r.get('message', {}).get('text', '')[:120]
                   level = r.get('level', 'note')
@@ -129,8 +135,8 @@ jobs:
                   fpath = loc.get('artifactLocation', {}).get('uri', '?')
                   line = loc.get('region', {}).get('startLine', '?')
                   print(f'  [{level}] {rule}: {fpath}:{line} — {msg}')
-              if len(results) > 20:
-                  print(f'  ... and {len(results) - 20} more findings')
+              if len(results) > 30:
+                  print(f'  ... and {len(results) - 30} more findings')
           " 2>&1 || echo "Could not parse SARIF"
             done
           else
@@ -143,89 +149,5 @@ jobs:
         with:
           name: codeql-sarif-results
           path: codeql-results/
-          retention-days: 30
-          if-no-files-found: warn
-
-  custom-queries:
-    name: Custom Security Queries
-    runs-on: macos-latest
-    timeout-minutes: 30
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          persist-credentials: false
-
-      - name: Credential hardening
-        run: |
-          set -euo pipefail
-          git config --global credential.helper ""
-          unset GITHUB_TOKEN || true
-
-      - name: Initialize CodeQL (custom queries only)
-        uses: github/codeql-action/init@v3
-        with:
-          languages: cpp
-          queries: +./codeql-queries
-
-      - name: Build for CodeQL
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            -project "XNU Image Fuzzer.xcodeproj" \
-            -scheme "XNU Image Fuzzer" \
-            -destination "generic/platform=iOS Simulator" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            2>&1 | sed -n '1,10p;$p'
-          echo "✅ Build for CodeQL completed"
-
-      - name: Run custom queries
-        uses: github/codeql-action/analyze@v3
-        with:
-          category: custom-security
-          output: custom-results
-          upload: always
-
-      - name: Summarize custom query results
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "=== Custom Query Results ==="
-          if [ -d custom-results ]; then
-            for sarif in custom-results/*.sarif; do
-              [ -f "$sarif" ] || continue
-              python3 -c "
-          import json
-          with open('$sarif') as f:
-              data = json.load(f)
-          for run in data.get('runs', []):
-              results = run.get('results', [])
-              print(f'Custom query findings: {len(results)}')
-              for r in results:
-                  rule = r.get('ruleId', 'unknown')
-                  msg = r.get('message', {}).get('text', '')[:150]
-                  level = r.get('level', 'note')
-                  locs = r.get('locations', [{}])
-                  loc = locs[0].get('physicalLocation', {}) if locs else {}
-                  fpath = loc.get('artifactLocation', {}).get('uri', '?')
-                  line = loc.get('region', {}).get('startLine', '?')
-                  print(f'  [{level}] {rule}: {fpath}:{line}')
-                  print(f'    {msg}')
-          " 2>&1 || echo "Could not parse SARIF"
-            done
-          else
-            echo "No custom results directory found"
-          fi
-
-      - name: Upload custom results
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: codeql-custom-results
-          path: custom-results/
           retention-days: 30
           if-no-files-found: warn
