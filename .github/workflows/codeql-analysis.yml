@@ -4,11 +4,16 @@
 #
 # Run CodeQL security analysis on the Objective-C fuzzer code.
 #
-# Architecture: Uses build-mode: none to analyze source directly
-# without compilation tracing. macOS 15 SIP strips DYLD_INSERT_LIBRARIES
-# from ALL hardened binaries (clang, xcodebuild), making build tracing
-# impossible. build-mode: none creates the CodeQL database directly
-# from source files. Upstream: github/codeql-action#2506
+# Architecture: Uses Homebrew LLVM clang for build tracing.
+# macOS 15 SIP strips DYLD_INSERT_LIBRARIES from ALL hardened
+# Mach-O binaries (system clang, xcodebuild), breaking CodeQL's
+# compiler interception. Homebrew LLVM is NOT SIP-hardened, so
+# CodeQL's DYLD tracing works with it.
+# Upstream issue: github/codeql-action#2506
+#
+# Note: CodeQL C/C++ extractor does NOT support .m files in
+# build-mode: none (standalone extraction only finds .c/.cpp).
+# We must use build-mode: manual with an actual compile step.
 #
 ###############################################################
 
@@ -53,7 +58,7 @@ jobs:
   analyze:
     name: CodeQL Analysis (Objective-C)
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -66,6 +71,16 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
+      - name: Install Homebrew LLVM (non-SIP-hardened clang)
+        run: |
+          set -euo pipefail
+          # Homebrew LLVM is not SIP-hardened — CodeQL DYLD tracing works with it
+          brew install llvm 2>&1 | tail -5
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "LLVM_PREFIX=${LLVM_PREFIX}" >> "$GITHUB_ENV"
+          echo "Homebrew clang: ${LLVM_PREFIX}/bin/clang"
+          "${LLVM_PREFIX}/bin/clang" --version | sed -n '1p'
+
       - name: Resolve CodeQL query pack dependencies
         run: |
           set -euo pipefail
@@ -75,9 +90,40 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
-          languages: c-cpp
-          build-mode: none
+          languages: cpp
+          build-mode: manual
           queries: +security-extended,./codeql-queries
+
+      - name: Build with non-SIP-hardened clang
+        run: |
+          set -euo pipefail
+          SYSROOT="$(xcrun --show-sdk-path)"
+          CLANG="${LLVM_PREFIX}/bin/clang"
+          echo "=== Build Configuration ==="
+          echo "Clang:   ${CLANG}"
+          echo "Sysroot: ${SYSROOT}"
+
+          # Compile each Objective-C source file
+          # CodeQL intercepts compiler invocations via DYLD_INSERT_LIBRARIES
+          # which works with Homebrew clang (not SIP-hardened)
+          compiled=0
+          for src in "XNU Image Fuzzer"/*.m; do
+            [ -f "$src" ] || continue
+            base="$(basename "$src" .m)"
+            echo "Compiling: $src"
+            "$CLANG" -c -x objective-c \
+              -isysroot "$SYSROOT" \
+              -fmodules \
+              -target arm64-apple-macos14.0 \
+              -Wno-everything \
+              "$src" -o "/tmp/${base}.o"
+            compiled=$((compiled + 1))
+          done
+          echo "=== Compiled ${compiled} source files ==="
+          if [ "$compiled" -eq 0 ]; then
+            echo "::error::No source files compiled"
+            exit 1
+          fi
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
