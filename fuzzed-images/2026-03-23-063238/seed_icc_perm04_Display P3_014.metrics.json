@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.863663963440783,
+  "input_sha256" : "09b6395d013a5ddbef0ac1aeddde5731bfcabd6033f942517ffe57ce31114ad6",
+  "output_sha256" : "772bcfff35b9ecb6488aeb794d240ce25aedc8c886936e79def4d4a6a90f8bf7",
+  "input_entropy" : 7.8289455945526045,
+  "output_size" : 2380,
+  "size_delta" : 524,
+  "input_size" : 1856,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm04_Display P3_014.png",
+  "timestamp" : "2026-03-23 06:31:54"
+}
