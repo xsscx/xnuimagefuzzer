@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.9939808318355485,
+  "input_sha256" : "9822a660fcb9119ed156536e28865f318d1f94b0f69c31dec201498494ba8e71",
+  "output_sha256" : "fe61ca312d733aa4c22b06f808271300bf7048d5c29d89e06a58e7ed7098d3d2",
+  "input_entropy" : 7.9940769065960344,
+  "output_size" : 66339,
+  "size_delta" : 200,
+  "input_size" : 66139,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm06_ITU-709_004.png",
+  "timestamp" : "2026-03-30 06:45:25"
+}
