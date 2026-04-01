@@ -38,6 +38,7 @@ on:
       - '**/*.m'
       - '**/*.h'
       - '**/*.py'
+      - '.github/scripts/**'
       - 'XNU Image Fuzzer/CMakeLists.txt'
   pull_request:
     branches: [main, master]
@@ -45,6 +46,7 @@ on:
       - '**/*.m'
       - '**/*.h'
       - '**/*.py'
+      - '.github/scripts/**'
       - 'XNU Image Fuzzer/CMakeLists.txt'
   workflow_dispatch:
 
@@ -69,8 +71,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "=== Checking for duplicate #define macros ==="
-          echo "ℹ️  Compiler-level check via -Werror=macro-redefined in syntax check steps"
-          echo "✅ Preprocessor-aware duplicate detection delegated to clang"
+          echo "INFO: compiler-level check via -Werror=macro-redefined in syntax check steps"
+          echo "OK: preprocessor-aware duplicate detection delegated to clang"
 
       - name: Compile Objective-C syntax check (xnuimagefuzzer.m)
         run: |
@@ -84,7 +86,7 @@ jobs:
             -Werror=macro-redefined \
             -I"XNU Image Fuzzer" \
             "XNU Image Fuzzer/xnuimagefuzzer.m"
-          echo "✅ xnuimagefuzzer.m syntax OK"
+          echo "OK: xnuimagefuzzer.m syntax OK"
 
       - name: Compile Objective-C syntax check (ViewController.m)
         run: |
@@ -97,7 +99,7 @@ jobs:
             -Werror=incompatible-pointer-types \
             -I"XNU Image Fuzzer" \
             "XNU Image Fuzzer/ViewController.m"
-          echo "✅ ViewController.m syntax OK"
+          echo "OK: ViewController.m syntax OK"
 
       - name: Compile Objective-C syntax check (AppDelegate.m)
         run: |
@@ -109,7 +111,7 @@ jobs:
             -fmodules \
             -I"XNU Image Fuzzer" \
             "XNU Image Fuzzer/AppDelegate.m"
-          echo "✅ AppDelegate.m syntax OK"
+          echo "OK: AppDelegate.m syntax OK"
 
       - name: Compile Objective-C syntax check (SceneDelegate.m)
         run: |
@@ -121,15 +123,15 @@ jobs:
             -fmodules \
             -I"XNU Image Fuzzer" \
             "XNU Image Fuzzer/SceneDelegate.m"
-          echo "✅ SceneDelegate.m syntax OK"
+          echo "OK: SceneDelegate.m syntax OK"
 
       - name: Verify UIImageView reuse pattern
         run: |
           set -euo pipefail
           if grep -q 'viewWithTag:100' "XNU Image Fuzzer/ViewController.m"; then
-            echo "✅ UIImageView reuse pattern found (viewWithTag:100)"
+            echo "OK: UIImageView reuse pattern found (viewWithTag:100)"
           else
-            echo "❌ UIImageView reuse pattern missing — cells may leak subviews"
+            echo "ERROR: UIImageView reuse pattern missing - cells may leak subviews"
             exit 1
           fi
 
@@ -137,9 +139,9 @@ jobs:
         run: |
           set -euo pipefail
           if grep -q 'const char\* injectStrings' "XNU Image Fuzzer/xnuimagefuzzer.m"; then
-            echo "✅ injectStrings uses const char*"
+            echo "OK: injectStrings uses const char*"
           else
-            echo "❌ injectStrings should use const char*"
+            echo "ERROR: injectStrings should use const char*"
             exit 1
           fi
 
@@ -175,14 +177,14 @@ jobs:
           source .github/scripts/sanitize-sed.sh
           echo "=== Checking Python syntax ==="
           errors=0
-          for f in *.py; do
+          while IFS= read -r -d '' f; do
             if python3 -m py_compile "$f" 2>&1; then
-              echo "✅ $(sanitize_line "$f") syntax OK"
+              echo "OK: $(sanitize_line "$f") syntax OK"
             else
-              echo "❌ $(sanitize_line "$f") has syntax errors"
+              echo "ERROR: $(sanitize_line "$f") has syntax errors"
               errors=1
             fi
-          done
+          done < <(find . -name '*.py' -not -path './.git/*' -print0 | sort -z)
           if [ "$errors" -eq 1 ]; then
             exit 1
           fi
@@ -190,7 +192,17 @@ jobs:
       - name: Pyflakes static analysis
         run: |
           set -euo pipefail
-          pyflakes *.py
+          find . -name '*.py' -not -path './.git/*' -print0 | sort -z | xargs -0 pyflakes
+
+      - name: Python unit tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_*.py'
+
+      - name: Shell script syntax check
+        run: |
+          set -euo pipefail
+          find .github/scripts -name '*.sh' -print0 | sort -z | xargs -0 -n1 bash -n
 
       - name: Check for duplicate dict keys
         run: |
@@ -217,10 +229,10 @@ jobs:
         run: |
           set -euo pipefail
           if grep -P "levelname.*levelname" read-magic-numbers.py; then
-            echo "❌ Duplicate levelname in logging format"
+            echo "ERROR: Duplicate levelname in logging format"
             exit 1
           else
-            echo "✅ Logging format OK"
+            echo "OK: Logging format OK"
           fi
 
   cmake-check:
@@ -244,9 +256,9 @@ jobs:
           set -euo pipefail
           echo "=== Checking CMakeLists.txt source file reference ==="
           if grep -q 'add_executable(xnuimagefuzzer xnuimagefuzzer.m)' "XNU Image Fuzzer/CMakeLists.txt"; then
-            echo "✅ CMakeLists.txt references correct source file (xnuimagefuzzer.m)"
+            echo "OK: CMakeLists.txt references correct source file (xnuimagefuzzer.m)"
           else
-            echo "❌ CMakeLists.txt references wrong source file"
+            echo "ERROR: CMakeLists.txt references wrong source file"
             grep 'add_executable' "XNU Image Fuzzer/CMakeLists.txt"
             exit 1
           fi
@@ -257,4 +269,4 @@ jobs:
           echo "=== Checking CMake syntax ==="
           cd "XNU Image Fuzzer"
           cmake -P CMakeLists.txt 2>&1 || true
-          echo "✅ CMakeLists.txt parsed without fatal errors"
+          echo "OK: CMakeLists.txt parsed without fatal errors"

@@ -3,8 +3,8 @@
 # Intent: xnuimagefuzzer-instrumented
 #
 # Two-job pipeline:
-#   Job 1 — ASAN+UBSAN sanitizer testing via xcodebuild (Mac Catalyst)
-#   Job 2 — Code coverage via native clang (arm64, no xcodebuild)
+#   Job 1 - ASAN+UBSAN sanitizer testing via xcodebuild (Mac Catalyst)
+#   Job 2 - Code coverage via native clang (arm64, no xcodebuild)
 #
 # Xcode's CLANG_ENABLE_CODE_COVERAGE=YES does NOT inject
 # -fprofile-instr-generate for Mac Catalyst builds, so coverage
@@ -52,6 +52,7 @@ on:
       - '**/*.c'
       - '**/*.swift'
       - '**/*.plist'
+      - '.github/scripts/**'
   pull_request:
     branches: [main, master]
     paths:
@@ -59,10 +60,11 @@ on:
       - '**/*.h'
       - '**/*.c'
       - '**/*.swift'
+      - '.github/scripts/**'
   workflow_dispatch:
 
 jobs:
-  # ── Job 1: Instrumented macOS Build + Run + Coverage ───────
+  # Job 1: Instrumented macOS Build + Run + Coverage
   instrumented-macos:
     name: macOS (ASAN+UBSAN)
     runs-on: macos-latest
@@ -110,18 +112,18 @@ jobs:
             GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
             OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer' \
             2>&1 | tee /tmp/xcodebuild-instrumented.log
-          echo "✅ Mac Catalyst instrumented build succeeded"
+          echo "OK: Mac Catalyst instrumented build succeeded"
 
           echo "## Instrumented Build (Mac Catalyst)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Platform | macOS (Mac Catalyst) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| AddressSanitizer | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| UndefinedBehaviorSanitizer | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Frame Pointers | ✅ Preserved |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Debug Symbols | ✅ Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Code Coverage | ⏭️ See native-coverage job |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AddressSanitizer | Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| UndefinedBehaviorSanitizer | Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Frame Pointers | Preserved |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Debug Symbols | Enabled |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Code Coverage | See native-coverage job |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Locate binary
         id: locate
@@ -133,7 +135,7 @@ jobs:
             | sed -n '1p')
 
           if [ -z "$BINARY" ]; then
-            echo "❌ Binary not found in DerivedData"
+            echo "ERROR: Binary not found in DerivedData"
             find /tmp/DerivedData -name "*.app" -type d | sed -n '1,5p'
             exit 1
           fi
@@ -142,7 +144,7 @@ jobs:
           APP_DIR=$(dirname "$BINARY")
           echo "app_dir=$APP_DIR" >> "$GITHUB_OUTPUT"
           file "$BINARY"
-          echo "✅ Located: $BINARY"
+          echo "OK: Located: $BINARY"
 
       - name: Static analysis
         run: |
@@ -187,7 +189,7 @@ jobs:
           launchctl setenv UBSAN_OPTIONS "$UBSAN_OPTIONS"
           sleep 1
 
-          echo "🔨 Launching instrumented Mac Catalyst app: $APP_BUNDLE"
+          echo "Launching instrumented Mac Catalyst app: $APP_BUNDLE"
 
           open --env FUZZ_OUTPUT_DIR="$FUZZ_OUTPUT_DIR" \
                --env ASAN_OPTIONS="$ASAN_OPTIONS" \
@@ -195,18 +197,18 @@ jobs:
                "$APP_BUNDLE" &
           OPEN_PID=$!
           disown $OPEN_PID
-          echo "✅ App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
+          echo "OK: App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
 
           # Poll for output files (fuzzing runs in viewDidLoad)
-          # 17 specs × 6 files each (seed + corrupted + 4 format variants) = 102 expected
+          # 17 specs x 6 files each (seed + corrupted + 4 format variants) = 102 expected
           for i in $(seq 1 120); do
             FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
             if [ "$FILE_COUNT" -ge 80 ]; then
-              echo "✅ Found $FILE_COUNT files after ${i}s"
+              echo "OK: Found $FILE_COUNT files after ${i}s"
               break
             fi
             if [ "$((i % 10))" -eq 0 ]; then
-              echo "⏳ ${FILE_COUNT} files after ${i}s..."
+              echo "INFO: ${FILE_COUNT} files after ${i}s..."
             fi
             sleep 1
           done
@@ -216,7 +218,7 @@ jobs:
 
           # Terminate app gracefully for profraw flush:
           # SIGINT triggers atexit() handlers (including llvm profraw writer)
-          # SIGTERM does NOT trigger atexit() — so SIGINT first, then SIGTERM fallback
+          # SIGTERM does NOT trigger atexit() - so SIGINT first, then SIGTERM fallback
           # Use pgrep -x for exact process name match (avoids matching grep/open/shell)
           APP_PIDS=$(pgrep -x "XNU Image Fuzzer" 2>/dev/null || true)
           if [ -n "$APP_PIDS" ]; then
@@ -303,7 +305,7 @@ jobs:
             if [ "$SIZE" -eq 0 ]; then
               ZERO_SIZE=$((ZERO_SIZE + 1))
               INVALID=$((INVALID + 1))
-              echo "| $NAME | 0 B | — | — | ❌ Empty |" >> "$GITHUB_STEP_SUMMARY"
+              echo "| $NAME | 0 B | - | - | EMPTY |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
 
@@ -317,14 +319,14 @@ jobs:
 
             if [ "$FORMAT" != "unknown" ] && [ "$WIDTH" != "?" ] && [ "$HEIGHT" != "?" ]; then
               VALID=$((VALID + 1))
-              STATUS="✅ Valid"
+              STATUS="OK"
             else
               INVALID=$((INVALID + 1))
-              STATUS="⚠️ $FILETYPE"
+              STATUS="WARN $FILETYPE"
             fi
 
             SIZE_H=$(numfmt --to=iec "$SIZE" 2>/dev/null || echo "${SIZE} B")
-            echo "| $NAME | $SIZE_H | $FORMAT | ${WIDTH}×${HEIGHT} | $STATUS |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| $NAME | $SIZE_H | $FORMAT | ${WIDTH}x${HEIGHT} | $STATUS |" >> "$GITHUB_STEP_SUMMARY"
           done
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -336,7 +338,7 @@ jobs:
           echo "| Zero-size files | $ZERO_SIZE |" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$TOTAL" -eq 0 ]; then
-            echo "⚠️ No fuzzed images produced — fuzzer may not have run long enough" >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: No fuzzed images produced - fuzzer may not have run long enough" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload sanitizer logs
@@ -367,7 +369,7 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
-  # ── Job 2: Native clang Build + Run + Coverage ─────────────
+  # Job 2: Native clang Build + Run + Coverage
   # Xcode's CLANG_ENABLE_CODE_COVERAGE=YES does NOT inject
   # -fprofile-instr-generate for Mac Catalyst. This job compiles
   # directly with clang, producing real profraw/llvm-cov output.

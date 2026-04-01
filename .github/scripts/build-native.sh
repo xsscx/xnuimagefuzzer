@@ -1,7 +1,7 @@
 #!/bin/bash
 ###############################################################
 #
-# build-native.sh — Native arm64 clang build for xnuimagefuzzer
+# build-native.sh - Native arm64 clang build for xnuimagefuzzer
 #
 # Compiles the Mac Catalyst binary directly with clang, using
 # explicit -fprofile-instr-generate -fcoverage-mapping flags.
@@ -20,7 +20,7 @@
 #   /tmp/profraw/                                 # coverage profraw
 #   /tmp/coverage-report/                         # llvm-cov reports
 #
-# Copyright (c) 2021-2026 David H Hoyt LLC — GPL-3.0-or-later
+# Copyright (c) 2021-2026 David H Hoyt LLC - GPL-3.0-or-later
 ###############################################################
 
 set -euo pipefail
@@ -36,13 +36,14 @@ COV_DIR="${COV_DIR:-/tmp/coverage-report}"
 BINARY="$BUILD_DIR/xnuimagefuzzer"
 
 MODE="${1:-}"
+DO_RUN_STATUS=0
 
-# ── Helpers ──────────────────────────────────────────────────
-banner() { echo ""; echo "════════════════════════════════════════"; echo "  $1"; echo "════════════════════════════════════════"; }
+# Helpers
+banner() { echo ""; echo "========================================"; echo "  $1"; echo "========================================"; }
 
-die() { echo "❌ $1" >&2; exit 1; }
+die() { echo "ERROR: $1" >&2; exit 1; }
 
-# ── Build ────────────────────────────────────────────────────
+# Build
 do_build() {
   banner "Building xnuimagefuzzer (arm64 Mac Catalyst, ASAN+UBSAN+Coverage)"
 
@@ -79,42 +80,46 @@ do_build() {
     "${SOURCES[@]}" \
     -o "$BINARY"
 
-  echo "✅ Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
+  echo "Binary: $BINARY ($(du -h "$BINARY" | cut -f1))"
 
   # Verify instrumentation
   COV_SYMS=$(nm "$BINARY" 2>/dev/null | grep -c "llvm_profile" || echo 0)
   ASAN_SYMS=$(nm "$BINARY" 2>/dev/null | grep -c "asan" || echo 0)
   echo "   Coverage symbols: $COV_SYMS"
   echo "   ASAN symbols:     $ASAN_SYMS"
-  [ "$COV_SYMS" -gt 0 ] || die "No coverage symbols — build broken"
-  [ "$ASAN_SYMS" -gt 0 ] || die "No ASAN symbols — build broken"
+  [ "$COV_SYMS" -gt 0 ] || die "No coverage symbols - build broken"
+  [ "$ASAN_SYMS" -gt 0 ] || die "No ASAN symbols - build broken"
 }
 
-# ── Run ──────────────────────────────────────────────────────
+# Run
 do_run() {
   banner "Running xnuimagefuzzer under sanitizers with coverage"
 
-  [ -x "$BINARY" ] || die "Binary not found at $BINARY — run with --build-only first"
+  [ -x "$BINARY" ] || die "Binary not found at $BINARY - run with --build-only first"
 
   mkdir -p "$PROFRAW_DIR" "$FUZZ_DIR"
-  # Clean stale data
-  rm -f "$PROFRAW_DIR"/*.profraw "$FUZZ_DIR"/*
+  : > /tmp/fuzzer-run.log
+  # Clean stale data, including nested pipeline output.
+  find "$PROFRAW_DIR" -mindepth 1 -delete 2>/dev/null || true
+  find "$FUZZ_DIR" -mindepth 1 -delete 2>/dev/null || true
 
-  # Phase 1: Default mode — 19 seed specs routed through the current default permutation set
-  echo "── Phase 1: Default mode (seed generation + matched permutations) ──"
+  # Phase 1: Default mode - 19 seed specs routed through the current default permutation set
+  echo "-- Phase 1: Default mode (seed generation + matched permutations) --"
+  set +e
   FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
   FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
   LLVM_PROFILE_FILE="$PROFRAW_DIR/fuzzer-%m_%p.profraw" \
   ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
   UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
     "$BINARY" 2>&1 | tee /tmp/fuzzer-run.log
-
   RUN_EXIT=${PIPESTATUS[0]}
+  set -e
+
   echo "Phase 1 exit code: $RUN_EXIT"
 
-  # Phase 2: Pipeline mode — exercises encodeImageMultiFormat, encodeImageAs, createTIFFThumbnail
+  # Phase 2: Pipeline mode - exercises encodeImageMultiFormat, encodeImageAs, createTIFFThumbnail
   echo ""
-  echo "── Phase 2: Pipeline mode (multi-format encoding) ──"
+  echo "-- Phase 2: Pipeline mode (multi-format encoding) --"
   PIPELINE_DIR="$FUZZ_DIR/pipeline"
   mkdir -p "$PIPELINE_DIR"
   # Copy a few seed images as pipeline input
@@ -122,20 +127,24 @@ do_run() {
     cp "$f" "$PIPELINE_DIR/" 2>/dev/null || true
   done
 
+  set +e
   FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
   FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
   LLVM_PROFILE_FILE="$PROFRAW_DIR/pipeline-%m_%p.profraw" \
   ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
   UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-    "$BINARY" --pipeline "$PIPELINE_DIR" --iterations 2 2>&1 | tee -a /tmp/fuzzer-run.log || true
+    "$BINARY" --pipeline "$PIPELINE_DIR" --iterations 2 2>&1 | tee -a /tmp/fuzzer-run.log
+  PIPELINE_EXIT=${PIPESTATUS[0]}
+  set -e
 
-  echo "Phase 2 exit code: $?"
+  echo "Phase 2 exit code: $PIPELINE_EXIT"
 
   FILE_COUNT=$(find "$FUZZ_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
   PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
 
   echo ""
-  echo "Exit code:    $RUN_EXIT"
+  echo "Phase 1:      $RUN_EXIT"
+  echo "Phase 2:      $PIPELINE_EXIT"
   echo "Fuzzed files: $FILE_COUNT"
   echo "Profraw:      $PROFRAW_COUNT"
 
@@ -144,8 +153,8 @@ do_run() {
   ASAN_HITS="${ASAN_HITS:-0}"
   UBSAN_HITS=$(grep -c "runtime error:" /tmp/fuzzer-run.log 2>/dev/null || true)
   UBSAN_HITS="${UBSAN_HITS:-0}"
-  if [ "$ASAN_HITS" -gt 0 ]; then echo "⚠️  ASAN findings: $ASAN_HITS"; fi
-  if [ "$UBSAN_HITS" -gt 0 ]; then echo "⚠️  UBSAN findings: $UBSAN_HITS"; fi
+  if [ "$ASAN_HITS" -gt 0 ]; then echo "WARN: ASAN findings: $ASAN_HITS"; fi
+  if [ "$UBSAN_HITS" -gt 0 ]; then echo "WARN: UBSAN findings: $UBSAN_HITS"; fi
 
   MONO_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name '1Bit_*.png' 2>/dev/null | wc -l | tr -d ' ')
   REAL_ICC_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name 'fuzzed_image_*_icc_*.*' ! -name '*_icc_mismatch.*' ! -name '*_icc_mutated.*' 2>/dev/null | wc -l | tr -d ' ')
@@ -155,7 +164,7 @@ do_run() {
   echo "Top-level real ICC outputs:   $REAL_ICC_COUNT"
   echo "Top-level mutated ICC outputs:$MUTATED_ICC_COUNT"
 
-  [ "$MONO_COUNT" -gt 0 ] || echo "⚠️  No monochrome outputs (known issue — manual review needed)"
+  [ "$MONO_COUNT" -gt 0 ] || echo "WARN: No monochrome outputs (known issue - manual review needed)"
   [ "$REAL_ICC_COUNT" -gt 0 ] || die "No real ICC variants produced in default mode"
   [ "$MUTATED_ICC_COUNT" -gt 0 ] || die "No mutated ICC variants produced in default mode"
 
@@ -171,17 +180,22 @@ do_run() {
     done
   )
   if [ -n "$BAD_REGULAR_OUTPUTS" ]; then
-    echo "❌ Structurally broken regular outputs detected:"
+    echo "ERROR: Structurally broken regular outputs detected:"
     echo "$BAD_REGULAR_OUTPUTS"
     die "Regular outputs must remain decodable; only corrupted_* files may be structurally invalid"
   fi
 
-  [ "$FILE_COUNT" -ge 80 ] || echo "⚠️ Expected ≥80 fuzzed files, got $FILE_COUNT (ICC paths may need FUZZ_ICC_DIR)"
-  [ "$PROFRAW_COUNT" -gt 0 ] || die "No profraw files — coverage collection failed"
-  echo "✅ Run complete"
+  [ "$FILE_COUNT" -ge 80 ] || echo "WARN: Expected >=80 fuzzed files, got $FILE_COUNT (ICC paths may need FUZZ_ICC_DIR)"
+  [ "$PROFRAW_COUNT" -gt 0 ] || die "No profraw files - coverage collection failed"
+  if [ "$RUN_EXIT" -ne 0 ] || [ "$PIPELINE_EXIT" -ne 0 ]; then
+    DO_RUN_STATUS=1
+    echo "WARN: One or more fuzzing phases exited nonzero"
+    return
+  fi
+  echo "Run complete"
 }
 
-# ── Coverage ─────────────────────────────────────────────────
+# Coverage
 do_coverage() {
   banner "Generating coverage report"
 
@@ -189,7 +203,7 @@ do_coverage() {
 
   PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
   if [ "$PROFRAW_COUNT" -eq 0 ]; then
-    echo "⚠️  No profraw files — skipping coverage"
+    echo "WARN: No profraw files - skipping coverage"
     echo "No profraw files collected." > "$COV_DIR/summary.txt"
     return
   fi
@@ -221,14 +235,14 @@ do_coverage() {
     2>/dev/null || echo "(LCOV export skipped)"
 
   echo ""
-  echo "✅ Coverage report: $COV_DIR/summary.txt"
+  echo "Coverage report: $COV_DIR/summary.txt"
   echo "   HTML report:     $COV_DIR/html/index.html"
   echo "   LCOV:            $COV_DIR/coverage.lcov"
 }
 
-# ── Main ─────────────────────────────────────────────────────
+# Main
 case "${MODE}" in
   --build-only) do_build ;;
-  --run-only)   do_run; do_coverage ;;
-  *)            do_build; do_run; do_coverage ;;
+  --run-only)   do_run; do_coverage; [ "$DO_RUN_STATUS" -eq 0 ] || die "One or more fuzzing phases failed" ;;
+  *)            do_build; do_run; do_coverage; [ "$DO_RUN_STATUS" -eq 0 ] || die "One or more fuzzing phases failed" ;;
 esac

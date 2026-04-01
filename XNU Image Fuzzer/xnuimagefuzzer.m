@@ -4148,7 +4148,7 @@ void createBitmapContextStandardRGB(CGImageRef cgImg, int permutation) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
 
     CGColorSpaceRelease(colorSpace);
@@ -4255,7 +4255,7 @@ void createBitmapContextPremultipliedFirstAlpha(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -4375,7 +4375,7 @@ void createBitmapContextNonPremultipliedAlpha(CGImageRef cgImg) {
     }
 
     // Define bitmap info with non-premultiplied alpha
-    CGBitmapInfo bitmapInfo = kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -4499,7 +4499,7 @@ void createBitmapContext16BitDepth(CGImageRef cgImg) {
     }
 
     // Define bitmap info for 16-bit depth per channel
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrderDefault;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrderDefault;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 16, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -4703,7 +4703,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGBitmapByteOrder32Little;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGBitmapByteOrder32Little;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 32, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -4837,7 +4837,7 @@ void createBitmapContextAlphaOnly(CGImageRef cgImg) {
 
     // Since we're dealing with alpha only, no color space is required
     // Adjusting bitmap info to accommodate alpha data correctly
-    CGBitmapInfo bitmapInfo = kCGImageAlphaOnly | kCGBitmapByteOrderDefault;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaOnly | kCGBitmapByteOrderDefault;
 
     CGContextRef ctx = CGBitmapContextCreate(alphaData, width, height, 8, bytesPerRow, NULL, bitmapInfo);
 
@@ -5002,7 +5002,7 @@ void createBitmapContextBigEndian(CGImageRef cgImg) {
         return;
     }
 
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
     CGColorSpaceRelease(colorSpace); // Release the color space object
 
     if (!ctx) {
@@ -5080,7 +5080,7 @@ void createBitmapContextLittleEndian(CGImageRef cgImg) {
         return;
     }
 
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
     CGColorSpaceRelease(colorSpace); // Release the color space object
 
     if (!ctx) {
@@ -5161,7 +5161,7 @@ void createBitmapContext8BitInvertedColors(CGImageRef cgImg) {
         return;
     }
 
-    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Little);
+    CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 8, width * 4, colorSpace, (CGBitmapInfo)kCGImageAlphaNoneSkipLast | kCGBitmapByteOrder32Little);
     CGColorSpaceRelease(colorSpace); // Release the color space object
 
     if (!ctx) {
@@ -5271,7 +5271,7 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents;
     CGContextRef ctx = CGBitmapContextCreate(NULL, width, height, 32, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -5526,7 +5526,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
         memcpy(&floatData[i], &f, sizeof(float));
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGBitmapByteOrder32Host;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapFloatComponents | kCGBitmapByteOrder32Host;
     CGContextRef ctx = CGBitmapContextCreate(floatData, width, height, 32, floatBytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -5686,7 +5686,7 @@ void createBitmapContextIndexedColor(CGImageRef cgImg) {
         }
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rgbaData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -5762,7 +5762,7 @@ void createBitmapContextDisplayP3(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
@@ -5834,7 +5834,7 @@ void createBitmapContextBT2020(CGImageRef cgImg) {
         return;
     }
 
-    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
+    CGBitmapInfo bitmapInfo = (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big;
     CGContextRef ctx = CGBitmapContextCreate(rawData, width, height, 8, bytesPerRow, colorSpace, bitmapInfo);
     CGColorSpaceRelease(colorSpace);
 
