@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-extract-icc-seeds.py — Extract ICC profiles from fuzzed images for CFL fuzzer seeds.
+extract-icc-seeds.py - Extract ICC profiles from fuzzed images for CFL fuzzer seeds.
 
 Bridges xnuimagetools pipeline output into CFL fuzzer seed corpus.
 Extracts embedded ICC profiles from TIFF/PNG/JPEG images and copies them
@@ -20,9 +20,9 @@ Usage:
 
 Output structure:
     output/
-    ├── icc/          # Standalone ICC profiles (for profile/dump/deep_dump/toxml fuzzers)
-    ├── tiff/         # TIFF files (for tiffdump/specsep fuzzers)
-    └── manifest.json # Extraction metadata
+    |- icc/          # Standalone ICC profiles (for profile/dump/deep_dump/toxml fuzzers)
+    |- tiff/         # TIFF files (for tiffdump/specsep fuzzers)
+    `- manifest.json # Extraction metadata
 """
 
 import argparse
@@ -35,12 +35,31 @@ import sys
 from pathlib import Path
 
 
-def extract_icc_from_tiff(data: bytes) -> bytes | None:
-    """Extract ICC profile from TIFF IFD (tag 34675 = 0x8773)."""
+TIFF_TYPE_SIZES = {
+    1: 1,   # BYTE
+    2: 1,   # ASCII
+    3: 2,   # SHORT
+    4: 4,   # LONG
+    5: 8,   # RATIONAL
+    6: 1,   # SBYTE
+    7: 1,   # UNDEFINED
+    8: 2,   # SSHORT
+    9: 4,   # SLONG
+    10: 8,  # SRATIONAL
+    11: 4,  # FLOAT
+    12: 8,  # DOUBLE
+    13: 4,  # IFD
+    16: 8,  # LONG8
+    17: 8,  # SLONG8
+    18: 8,  # IFD8
+}
+
+
+def parse_tiff_header(data: bytes) -> dict | None:
+    """Parse classic TIFF or BigTIFF header metadata."""
     if len(data) < 8:
         return None
 
-    # Determine byte order
     if data[:2] == b'II':
         endian = '<'
     elif data[:2] == b'MM':
@@ -48,25 +67,92 @@ def extract_icc_from_tiff(data: bytes) -> bytes | None:
     else:
         return None
 
-    # Read IFD offset
-    ifd_offset = struct.unpack(endian + 'I', data[4:8])[0]
-    if ifd_offset >= len(data) - 2:
+    version = struct.unpack(endian + 'H', data[2:4])[0]
+    if version == 42:
+        ifd_offset = struct.unpack(endian + 'I', data[4:8])[0]
+        return {
+            'endian': endian,
+            'version': version,
+            'is_bigtiff': False,
+            'ifd_offset': ifd_offset,
+            'header_size': 8,
+            'entry_count_size': 2,
+            'entry_count_fmt': endian + 'H',
+            'entry_size': 12,
+            'count_fmt': endian + 'I',
+            'offset_fmt': endian + 'I',
+            'inline_threshold': 4,
+        }
+
+    if version == 43:
+        if len(data) < 16:
+            return None
+        offset_size = struct.unpack(endian + 'H', data[4:6])[0]
+        reserved = struct.unpack(endian + 'H', data[6:8])[0]
+        if offset_size != 8 or reserved != 0:
+            return None
+        ifd_offset = struct.unpack(endian + 'Q', data[8:16])[0]
+        return {
+            'endian': endian,
+            'version': version,
+            'is_bigtiff': True,
+            'ifd_offset': ifd_offset,
+            'header_size': 16,
+            'entry_count_size': 8,
+            'entry_count_fmt': endian + 'Q',
+            'entry_size': 20,
+            'count_fmt': endian + 'Q',
+            'offset_fmt': endian + 'Q',
+            'inline_threshold': 8,
+        }
+
+    return None
+
+
+def extract_icc_from_tiff(data: bytes) -> bytes | None:
+    """Extract ICC profile from TIFF IFD (tag 34675 = 0x8773)."""
+    header = parse_tiff_header(data)
+    if header is None:
+        return None
+
+    ifd_offset = header['ifd_offset']
+    entry_count_size = header['entry_count_size']
+    entry_size = header['entry_size']
+    inline_threshold = header['inline_threshold']
+    entry_count_fmt = header['entry_count_fmt']
+    count_fmt = header['count_fmt']
+    offset_fmt = header['offset_fmt']
+
+    if ifd_offset >= len(data) - entry_count_size:
         return None
 
     # Read IFD entry count
-    num_entries = struct.unpack(endian + 'H', data[ifd_offset:ifd_offset + 2])[0]
+    num_entries = struct.unpack(
+        entry_count_fmt, data[ifd_offset:ifd_offset + entry_count_size]
+    )[0]
 
     for i in range(num_entries):
-        entry_offset = ifd_offset + 2 + i * 12
-        if entry_offset + 12 > len(data):
+        entry_offset = ifd_offset + entry_count_size + i * entry_size
+        if entry_offset + entry_size > len(data):
             break
 
-        tag = struct.unpack(endian + 'H', data[entry_offset:entry_offset + 2])[0]
+        tag = struct.unpack(header['endian'] + 'H', data[entry_offset:entry_offset + 2])[0]
         if tag == 34675:  # ICC Profile tag
-            count = struct.unpack(endian + 'I', data[entry_offset + 4:entry_offset + 8])[0]
-            value_offset = struct.unpack(endian + 'I', data[entry_offset + 8:entry_offset + 12])[0]
-            if value_offset + count <= len(data):
-                return data[value_offset:value_offset + count]
+            field_type = struct.unpack(
+                header['endian'] + 'H', data[entry_offset + 2:entry_offset + 4]
+            )[0]
+            count_start = entry_offset + 4
+            count_end = count_start + (4 if not header['is_bigtiff'] else 8)
+            count = struct.unpack(count_fmt, data[count_start:count_end])[0]
+            unit_size = TIFF_TYPE_SIZES.get(field_type, 1)
+            data_size = count * unit_size
+            value_field = data[count_end:count_end + inline_threshold]
+            if data_size <= inline_threshold:
+                return value_field[:data_size]
+
+            value_offset = struct.unpack(offset_fmt, value_field)[0]
+            if value_offset + data_size <= len(data):
+                return data[value_offset:value_offset + data_size]
 
     return None
 
@@ -152,7 +238,14 @@ def process_directory(input_dir: Path, output_dir: Path, inject_cfl: Path | None
         'source': str(input_dir),
         'icc_profiles': [],
         'tiff_files': [],
-        'stats': {'files_scanned': 0, 'icc_extracted': 0, 'tiff_copied': 0, 'duplicates_skipped': 0}
+        'stats': {
+            'files_scanned': 0,
+            'icc_extracted': 0,
+            'tiff_copied': 0,
+            'duplicates_skipped': 0,
+            'invalid_tiff_skipped': 0,
+            'bigtiff_copied': 0,
+        },
     }
 
     seen_hashes = set()
@@ -175,6 +268,10 @@ def process_directory(input_dir: Path, output_dir: Path, inject_cfl: Path | None
             # Extract ICC profile
             icc_data = None
             if ext in ('.tiff', '.tif'):
+                header = parse_tiff_header(data)
+                if header is None:
+                    manifest['stats']['invalid_tiff_skipped'] += 1
+                    continue
                 icc_data = extract_icc_from_tiff(data)
             elif ext == '.png':
                 icc_data = extract_icc_from_png(data)
@@ -206,13 +303,17 @@ def process_directory(input_dir: Path, output_dir: Path, inject_cfl: Path | None
                     stem = Path(filename).stem.replace(' ', '_')
                     tiff_name = f'xnu_{stem}_{h}.tiff'
                     (tiff_dir / tiff_name).write_bytes(data)
+                    is_bigtiff = bool(header and header['is_bigtiff'])
                     manifest['tiff_files'].append({
                         'name': tiff_name,
                         'source': str(filepath.relative_to(input_dir)),
                         'size': len(data),
-                        'hash': h
+                        'hash': h,
+                        'is_bigtiff': is_bigtiff,
                     })
                     manifest['stats']['tiff_copied'] += 1
+                    if is_bigtiff:
+                        manifest['stats']['bigtiff_copied'] += 1
 
     # Write manifest
     (output_dir / 'manifest.json').write_text(json.dumps(manifest, indent=2))
@@ -226,7 +327,7 @@ def process_directory(input_dir: Path, output_dir: Path, inject_cfl: Path | None
 
 def _inject_into_cfl(icc_dir: Path, tiff_dir: Path, cfl_dir: Path, manifest: dict):
     """Copy extracted seeds into CFL fuzzer corpus directories."""
-    # ICC profiles → 4 fuzzers that parse ICC
+    # ICC profiles -> 4 fuzzers that parse ICC
     icc_targets = [
         'corpus-icc_profile_fuzzer',
         'corpus-icc_deep_dump_fuzzer',
@@ -234,7 +335,7 @@ def _inject_into_cfl(icc_dir: Path, tiff_dir: Path, cfl_dir: Path, manifest: dic
         'corpus-icc_toxml_fuzzer',
     ]
 
-    # TIFF files → 2 fuzzers that parse TIFF
+    # TIFF files -> 2 fuzzers that parse TIFF
     tiff_targets = [
         'corpus-icc_tiffdump_fuzzer',
         'corpus-icc_specsep_fuzzer',
@@ -261,8 +362,8 @@ def _inject_into_cfl(icc_dir: Path, tiff_dir: Path, cfl_dir: Path, manifest: dic
                     shutil.copy2(tiff_file, dest)
                     injected_tiff += 1
 
-    print(f'  Injected: {injected_icc} ICC profiles → {len(icc_targets)} fuzzers')
-    print(f'  Injected: {injected_tiff} TIFF files → {len(tiff_targets)} fuzzers')
+    print(f'  Injected: {injected_icc} ICC profiles -> {len(icc_targets)} fuzzers')
+    print(f'  Injected: {injected_tiff} TIFF files -> {len(tiff_targets)} fuzzers')
 
 
 def main():
@@ -284,11 +385,13 @@ def main():
     manifest = process_directory(args.input, args.output, args.inject_cfl)
 
     stats = manifest['stats']
-    print('\n── Results ──')
+    print('\n-- Results --')
     print(f'  Files scanned:      {stats["files_scanned"]}')
     print(f'  ICC profiles:       {stats["icc_extracted"]}')
     print(f'  TIFF files:         {stats["tiff_copied"]}')
+    print(f'  BigTIFF files:      {stats["bigtiff_copied"]}')
     print(f'  Duplicates skipped: {stats["duplicates_skipped"]}')
+    print(f'  Invalid TIFF names: {stats["invalid_tiff_skipped"]}')
     print(f'  Output: {args.output}')
 
 
