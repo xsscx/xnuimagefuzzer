@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.9625282980922432,
+  "input_sha256" : "233a64a0de1b88a8ce3573cc981fe8f71dc5d63d88a039ef1fa3945bfffb550d",
+  "output_sha256" : "9a7903ccd9a4ac1fa77b71222053749111a05a6bbdeea4d5b3eb036dc109e394",
+  "input_entropy" : 7.9617864870467265,
+  "output_size" : 7869,
+  "size_delta" : 1036,
+  "input_size" : 6833,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm14_ACESCG Linear_016.png",
+  "timestamp" : "2026-04-20 06:55:40"
+}
