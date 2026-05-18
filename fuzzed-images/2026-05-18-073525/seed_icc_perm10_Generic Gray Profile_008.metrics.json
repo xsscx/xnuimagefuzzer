@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.990662578132679,
+  "input_sha256" : "1385dd5365e1f85bbe7fc7d7e9de325ba694ef4730f0160066259f34973a52e0",
+  "output_sha256" : "3e1fcff85008be19b10318952c64484a8fdce20f334ca34276c851f34c767b03",
+  "input_entropy" : 7.9907280156278198,
+  "output_size" : 31776,
+  "size_delta" : 12,
+  "input_size" : 31764,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm10_Generic Gray Profile_008.png",
+  "timestamp" : "2026-05-18 07:34:10"
+}
