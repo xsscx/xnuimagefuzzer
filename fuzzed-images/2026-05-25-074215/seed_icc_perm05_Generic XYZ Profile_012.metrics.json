@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.8305811854734317,
+  "input_sha256" : "11e77093a6630c3adeef8e7c6ae6ceb2cdf4999bfb2ed69cd2281ff763c52d99",
+  "output_sha256" : "4a02c4727aef06a47cf288c6dd53938b06ee6381f28a9ac972eb3aa03d3f6509",
+  "input_entropy" : 7.8414446285051707,
+  "output_size" : 2039,
+  "size_delta" : 12,
+  "input_size" : 2027,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm05_Generic XYZ Profile_012.png",
+  "timestamp" : "2026-05-25 07:41:19"
+}
