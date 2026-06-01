@@ -1,0 +1,11 @@
+{
+  "output_entropy" : 7.9945805811599211,
+  "input_sha256" : "b02044967b880b918ab4f409613353dff1e255ed5610479bdb3fab847f4ff26b",
+  "output_sha256" : "46486cf4047c00ca6cd6f300c45d56686305ee69092afb3fd3004b32afb75d31",
+  "input_entropy" : 7.9946069376872346,
+  "output_size" : 84558,
+  "size_delta" : 12,
+  "input_size" : 84546,
+  "output_path" : "\/tmp\/fuzzed_images\/seed_icc_perm11_Generic Gray Gamma 2.2 Profile_009.png",
+  "timestamp" : "2026-06-01 07:51:48"
+}
