@@ -35,26 +35,6 @@ defaults:
     shell: bash --noprofile --norc {0}
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - '**/*.m'
-      - '**/*.h'
-      - '**/*.plist'
-      - '**/*.storyboard'
-      - '**/*.pbxproj'
-      - '**/*.xcscheme'
-  pull_request:
-    branches: [main, master]
-    paths:
-      - '**/*.m'
-      - '**/*.h'
-      - '**/*.plist'
-      - '**/*.storyboard'
-      - '**/*.pbxproj'
-      - '**/*.xcscheme'
-  schedule:
-    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 jobs:
