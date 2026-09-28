@@ -59,7 +59,7 @@ jobs:
       app_path: ${{ steps.verify.outputs.app_path }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -162,6 +162,11 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             RUN_CLANG_STATIC_ANALYZER=YES \
             2>&1 | tee /tmp/xcodebuild-release-analyze.log | tail -10
+          WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-release-analyze.log 2>/dev/null || true)
+          if [ "${WARNINGS:-0}" -ne 0 ]; then
+            echo "Static analysis produced $WARNINGS finding(s)" >&2
+            exit 1
+          fi
           echo "Static analysis passed"
 
       - name: Generate build metadata
@@ -183,7 +188,7 @@ jobs:
           cat /tmp/build-metadata.txt
 
       - name: Upload app bundle artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: XNUImageFuzzer-Simulator-${{ steps.version.outputs.version }}
           path: /tmp/XNUImageFuzzer-Simulator.zip
@@ -191,7 +196,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload build metadata
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-metadata-${{ steps.version.outputs.version }}
           path: /tmp/build-metadata.txt
@@ -204,7 +209,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -228,7 +233,7 @@ jobs:
           ls -lh verified-image-icc-qa.tar.gz
 
       - name: Upload corpus artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: verified-image-icc-qa-${{ needs.build-release.outputs.version }}
           path: /tmp/verified-image-icc-qa.tar.gz
@@ -245,13 +250,13 @@ jobs:
       contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: /tmp/release-artifacts
 

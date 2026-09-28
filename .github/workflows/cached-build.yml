@@ -63,7 +63,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -92,7 +92,7 @@ jobs:
 
       - name: Restore DerivedData cache
         id: cache-restore
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             /tmp/DerivedData/Build/Intermediates.noindex
@@ -120,7 +120,7 @@ jobs:
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee /tmp/xcodebuild-debug.log
           ELAPSED=$(( $(date +%s) - START ))
-          echo "✅ Debug build succeeded in ${ELAPSED}s"
+          echo "OK Debug build succeeded in ${ELAPSED}s"
 
       - name: Build Release (cached)
         run: |
@@ -139,7 +139,7 @@ jobs:
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee /tmp/xcodebuild-release.log
           ELAPSED=$(( $(date +%s) - START ))
-          echo "✅ Release build succeeded in ${ELAPSED}s"
+          echo "OK Release build succeeded in ${ELAPSED}s"
 
       - name: Verify build artifacts
         id: verify
@@ -147,20 +147,20 @@ jobs:
           set -euo pipefail
           APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/XNU Image Fuzzer.app"
           if [ -d "$APP_PATH" ]; then
-            echo "✅ App bundle exists: $APP_PATH"
+            echo "OK App bundle exists: $APP_PATH"
             BINARY="$APP_PATH/XNU Image Fuzzer"
             if [ -f "$BINARY" ]; then
               file "$BINARY"
               SIZE=$(stat -f%z "$BINARY" 2>/dev/null || stat -c%s "$BINARY")
               echo "Binary size: $SIZE bytes"
               echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
-              echo "✅ Binary is valid"
+              echo "OK Binary is valid"
             else
-              echo "❌ Binary not found in app bundle"
+              echo "ERROR Binary not found in app bundle"
               exit 1
             fi
           else
-            echo "❌ App bundle not found at $APP_PATH"
+            echo "ERROR App bundle not found at $APP_PATH"
             find "$DERIVED_DATA" -name "*.app" -maxdepth 5 2>/dev/null | sed -n '1,5p'
             exit 1
           fi
@@ -181,33 +181,39 @@ jobs:
             CLANG_ANALYZER_OUTPUT=text \
             RUN_CLANG_STATIC_ANALYZER=YES \
             2>&1 | tee /tmp/xcodebuild-analyze.log
-          WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
+          WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || true)
           echo "Compiler warnings: $WARNINGS"
-          echo "✅ Static analysis completed"
+          if [ "${WARNINGS:-0}" -ne 0 ]; then
+            echo "Static analysis produced findings" >&2
+            exit 1
+          fi
+          echo "OK Static analysis completed"
 
       - name: Build summary
         if: always()
         run: |
           set -euo pipefail
-          echo "## Build Summary" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Cache hit | ${{ steps.cache-restore.outputs.cache-hit || 'false' }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Xcode | $(xcodebuild -version 2>&1 | sed -n '1p') |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Build Summary"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Cache hit | ${{ steps.cache-restore.outputs.cache-hit || 'false' }} |"
+            echo "| Xcode | $(xcodebuild -version 2>&1 | sed -n '1p') |"
 
-          # DerivedData size
-          if [ -d "$DERIVED_DATA" ]; then
-            DD_SIZE=$(du -sh "$DERIVED_DATA" 2>/dev/null | cut -f1)
-            echo "| DerivedData | $DD_SIZE |" >> "$GITHUB_STEP_SUMMARY"
-          fi
+            # DerivedData size
+            if [ -d "$DERIVED_DATA" ]; then
+              DD_SIZE=$(du -sh "$DERIVED_DATA" 2>/dev/null | cut -f1)
+              echo "| DerivedData | $DD_SIZE |"
+            fi
 
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "✅ Workflow complete"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "OK Workflow complete"
 
       - name: Upload binary artifact
         if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: xnuimagefuzzer-cached-build
           path: ${{ steps.verify.outputs.app_path }}

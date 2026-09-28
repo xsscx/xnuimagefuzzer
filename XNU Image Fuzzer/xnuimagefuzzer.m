@@ -26,9 +26,9 @@
  *
  *  @section ROADMAP
  *  - Grayscale Implementation
- *  - ICC Color Profiles ✅ Implemented: ICC profile embedding, color space diversity
- *  - Iteration Chaining ✅ Implemented: Multi-pass fuzzing with varied mutations
- *  - Output Metrics ✅ Implemented: File size, entropy, histogram, provenance naming
+ *  - ICC Color Profiles OK Implemented: ICC profile embedding, color space diversity
+ *  - Iteration Chaining OK Implemented: Multi-pass fuzzing with varied mutations
+ *  - Output Metrics OK Implemented: File size, entropy, histogram, provenance naming
  */
 
 #pragma mark - Headers
@@ -58,11 +58,12 @@
 #include <sys/sysctl.h>
 #include <dlfcn.h>
 #include <dirent.h>
+#include <mach/mach.h>
 #include <CommonCrypto/CommonDigest.h>
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h> // For UTTypePNG
 
-// LLVM coverage runtime — resolved at runtime via dlsym to avoid linker errors
+// LLVM coverage runtime -- resolved at runtime via dlsym to avoid linker errors
 // when building without -fprofile-instr-generate
 typedef int (*llvm_profile_write_file_fn)(void);
 typedef void (*llvm_profile_set_filename_fn)(const char *);
@@ -123,6 +124,19 @@ static int verboseLogging = 0; // 1 enables detailed logging, 0 disables it.
 #define COMM_PAGE_LOGICAL_CPUS          (COMM_PAGE64_BASE_ADDRESS + 0x036)
 #define COMM_PAGE_MEMORY_SIZE           (COMM_PAGE64_BASE_ADDRESS + 0x038)
 #define COMM_PAGE_CPUFAMILY             (COMM_PAGE64_BASE_ADDRESS + 0x040)
+
+static bool readCommPageValue(uintptr_t address, void *value, vm_size_t size) {
+    if (!value || size == 0) return false;
+
+    vm_size_t bytesRead = 0;
+    kern_return_t result = vm_read_overwrite(
+        mach_task_self(),
+        (vm_address_t)address,
+        size,
+        (vm_address_t)value,
+        &bytesRead);
+    return result == KERN_SUCCESS && bytesRead == size;
+}
 
 #pragma mark - Color Definitions
 
@@ -314,16 +328,11 @@ char *signature(void) {
         return NULL;
     }
 
-    // Ensure that COMM_PAGE64_BASE_ADDRESS is valid and not NULL before using memcpy
-    const char *base_address = (const char *)COMM_PAGE64_BASE_ADDRESS;
-    if (!base_address) {
-        fprintf(stderr, "Error: COMM_PAGE64_BASE_ADDRESS is null.\n");
+    if (!readCommPageValue(COMM_PAGE64_BASE_ADDRESS, signature, 0x10)) {
+        fprintf(stderr, "Error: Failed to read the communication page signature.\n");
         free(signature);
         return NULL;
     }
-
-    // Copy data safely
-    memcpy(signature, base_address, 0x10);
 
     // No need to explicitly set the null terminator since calloc initializes the memory to zero
     return signature;
@@ -505,8 +514,6 @@ const char *cpu_cap_strings[] = {
  * dump_comm_page(); // Logs the communication page details for the current system.
  * @endcode
  */
-#define READ_COMM_PAGE_VALUE(type, address) (*((type *)(address)))
-
 void dump_comm_page(void) {
     char *sig = signature();
     if (sig) {
@@ -516,13 +523,26 @@ void dump_comm_page(void) {
         NSLog(@"[*] COMM_PAGE_SIGNATURE: Error reading signature.");
     }
 
-    // Utilizing macro for simplified reading
-    NSLog(@"[*] COMM_PAGE_VERSION: %d", READ_COMM_PAGE_VALUE(uint16_t, COMM_PAGE64_BASE_ADDRESS + 0x01E));
-    NSLog(@"[*] COMM_PAGE_NCPUS: %d", READ_COMM_PAGE_VALUE(uint8_t, COMM_PAGE64_BASE_ADDRESS + 0x022));
+    uint16_t version = 0;
+    uint8_t cpuCount = 0;
+    if (readCommPageValue(COMM_PAGE_VERSION, &version, sizeof(version))) {
+        NSLog(@"[*] COMM_PAGE_VERSION: %d", version);
+    } else {
+        NSLog(@"[*] COMM_PAGE_VERSION: unavailable");
+    }
+    if (readCommPageValue(COMM_PAGE_NCPUS, &cpuCount, sizeof(cpuCount))) {
+        NSLog(@"[*] COMM_PAGE_NCPUS: %d", cpuCount);
+    } else {
+        NSLog(@"[*] COMM_PAGE_NCPUS: unavailable");
+    }
     // Additional comm page details could be added here
 
     NSLog(@"[*] COMM_PAGE_CPU_CAPABILITIES64:");
-    uint64_t cpu_caps = READ_COMM_PAGE_VALUE(uint64_t, COMM_PAGE_CPU_CAPABILITIES64);
+    uint64_t cpu_caps = 0;
+    if (!readCommPageValue(COMM_PAGE_CPU_CAPABILITIES64, &cpu_caps, sizeof(cpu_caps))) {
+        NSLog(@"\tunavailable");
+        return;
+    }
     for (int i = 0, shift = 0; i < (int)(sizeof(cpu_cap_strings) / sizeof(char *)); i++) {
         if (i == 16) { // Special handling for NumCPUs
             NSLog(@"\t%s: %d", cpu_cap_strings[i], (int)(cpu_caps >> 16) & 0xFF);
@@ -1280,7 +1300,7 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
                         }
                         break;
                     case 5:
-                        // Subnormal/denormalized floats — stress float-to-int conversion
+                        // Subnormal/denormalized floats -- stress float-to-int conversion
                         for (int i = 0; i < 4; i++) {
                             switch (arc4random_uniform(4)) {
                                 case 0: rawData[pixelIndex + i] = FLT_MIN * 0.5f; break;
@@ -1398,7 +1418,7 @@ void applyEnhancedFuzzingToBitmapContext16Bit(unsigned char *rawData, size_t wid
             case 0: // Inversion
                 data16[i] = 0xFFFF - data16[i];
                 break;
-            case 1: // Random noise ±500
+            case 1: // Random noise +/-500
                 {
                     int noise = (int)arc4random_uniform(1001) - 500;
                     int newVal = (int)data16[i] + noise;
@@ -1490,7 +1510,7 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
                 break;
             }
             case 2: {
-                // Corrupt chunk CRCs — walk chunks and flip CRC bytes
+                // Corrupt chunk CRCs -- walk chunks and flip CRC bytes
                 size_t pos = 8; // skip PNG signature
                 int corrupted = 0;
                 while (pos + 12 <= len && corrupted < 3) {
@@ -1508,7 +1528,7 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
                 break;
             }
             case 3: {
-                // Truncate IDAT stream — find first IDAT and zero out trailing portion
+                // Truncate IDAT stream -- find first IDAT and zero out trailing portion
                 size_t pos = 8;
                 while (pos + 12 <= len) {
                     uint32_t chunkLen = ((uint32_t)bytes[pos] << 24) | ((uint32_t)bytes[pos+1] << 16) |
@@ -1606,7 +1626,7 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
                 break;
             }
             case 1: {
-                // Corrupt IFD tag type fields — set invalid TIFF data types
+                // Corrupt IFD tag type fields -- set invalid TIFF data types
                 if (ifdOffset + 2 <= len) {
                     uint16_t numEntries = isLE ? (bytes[ifdOffset] | (bytes[ifdOffset+1] << 8))
                                                : ((bytes[ifdOffset] << 8) | bytes[ifdOffset+1]);
@@ -1729,7 +1749,7 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
                 break;
             }
             case 6: {
-                // Inject BigTIFF magic (0x002B instead of 0x002A) — confuses parsers
+                // Inject BigTIFF magic (0x002B instead of 0x002A) -- confuses parsers
                 if (len >= 4) {
                     if (isLE) {
                         bytes[2] = 0x2B; bytes[3] = 0x00; // BigTIFF version
@@ -1776,7 +1796,7 @@ NSData* applyPostEncodingCorruption(NSData *encodedData, NSString *format) {
         bytes[offset] = 0xFF;     // R
         bytes[offset+1] = 0xFF;   // G
         bytes[offset+2] = 0xFF;   // B
-        bytes[offset+3] = 0x01;   // A (very low — R,G,B > A is invalid premultiplied)
+        bytes[offset+3] = 0x01;   // A (very low -- R,G,B > A is invalid premultiplied)
         NSLog(@"Injected premultiplied alpha violation at offset %zu", offset);
     }
 
@@ -2066,28 +2086,28 @@ BOOL writeDeterministicallyFuzzedImage(NSString *inputPath, NSString *outputPath
 void performAllImagePermutations(void) {
     // Generate diverse seed images with varied dimensions and process each
     // through a different bitmap context permutation for maximum code coverage.
-    // Minimum seed dimension is 16×16 to exercise meaningful decoder code paths.
+    // Minimum seed dimension is 16x16 to exercise meaningful decoder code paths.
     // Includes 3 new color spaces: CMYK, HDR Float16, Indexed Color.
     struct { size_t width; size_t height; int permutation; } specs[] = {
-        { 64,  64,  1},  // Small square — StandardRGB
-        {128, 128,  3},  // Medium square — NonPremultipliedAlpha
-        {256, 256,  4},  // Large square — 16BitDepth
-        {100, 200,  6},  // Tall rectangle — HDRFloat
-        {200, 100,  7},  // Wide rectangle — AlphaOnly
-        { 32,  32,  8},  // Tiny square — 1BitMonochrome
-        {512, 512,  9},  // Large square — BigEndian
-        { 80, 120, 10},  // Odd aspect — LittleEndian
-        {160, 160, 11},  // Medium square — 8BitInvertedColors
-        { 96,  96, 12},  // Small square — 32BitFloat4Component
-        { 16,  16,  1},  // Small square — StandardRGB (was 1×1)
-        { 24,  24,  5},  // Non-power-of-2 square — Grayscale (was 13×7)
-        { 16,  32,  2},  // Narrow rectangle — PremultipliedFirstAlpha (was 3×1)
-        { 32,  16,  4},  // Wide rectangle — 16BitDepth (was 1×100)
-        { 48,  48, 13},  // Medium square — CMYK
-        { 64,  32, 14},  // Wide rectangle — HDRFloat16
-        { 32,  64, 15},  // Tall rectangle — IndexedColor
-        {128,  64, 16},  // Wide rectangle — Display P3
-        { 64, 128, 17},  // Tall rectangle — BT.2020
+        { 64,  64,  1},  // Small square -- StandardRGB
+        {128, 128,  3},  // Medium square -- NonPremultipliedAlpha
+        {256, 256,  4},  // Large square -- 16BitDepth
+        {100, 200,  6},  // Tall rectangle -- HDRFloat
+        {200, 100,  7},  // Wide rectangle -- AlphaOnly
+        { 32,  32,  8},  // Tiny square -- 1BitMonochrome
+        {512, 512,  9},  // Large square -- BigEndian
+        { 80, 120, 10},  // Odd aspect -- LittleEndian
+        {160, 160, 11},  // Medium square -- 8BitInvertedColors
+        { 96,  96, 12},  // Small square -- 32BitFloat4Component
+        { 16,  16,  1},  // Small square -- StandardRGB (was 1x1)
+        { 24,  24,  5},  // Non-power-of-2 square -- Grayscale (was 13x7)
+        { 16,  32,  2},  // Narrow rectangle -- PremultipliedFirstAlpha (was 3x1)
+        { 32,  16,  4},  // Wide rectangle -- 16BitDepth (was 1x100)
+        { 48,  48, 13},  // Medium square -- CMYK
+        { 64,  32, 14},  // Wide rectangle -- HDRFloat16
+        { 32,  64, 15},  // Tall rectangle -- IndexedColor
+        {128,  64, 16},  // Wide rectangle -- Display P3
+        { 64, 128, 17},  // Tall rectangle -- BT.2020
     };
     int count = sizeof(specs) / sizeof(specs[0]);
 
@@ -2260,9 +2280,9 @@ NSData* embedICCProfile(NSData *imageData, NSString *iccProfilePath, NSString *f
     // Create a color space from the ICC profile data
     CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
     if (!iccColorSpace) {
-        NSLog(@"Failed to create color space from ICC profile (may be malformed — keeping as-is for fuzzing)");
+        NSLog(@"Failed to create color space from ICC profile (may be malformed -- keeping as-is for fuzzing)");
         // For fuzzing purposes, embed the raw ICC data into the image properties
-        // even if the color space can't be parsed — this exercises error paths
+        // even if the color space can't be parsed -- this exercises error paths
     }
 
     CGImageSourceRef source = CGImageSourceCreateWithData((CFDataRef)imageData, NULL);
@@ -2303,7 +2323,7 @@ NSData* embedICCProfile(NSData *imageData, NSString *iccProfilePath, NSString *f
                 CGContextRelease(ctx);
             }
         } else {
-            NSLog(@"ICC profile has %zu components (not RGB) — attaching without re-render", numComponents);
+            NSLog(@"ICC profile has %zu components (not RGB) -- attaching without re-render", numComponents);
         }
     }
 
@@ -2331,7 +2351,7 @@ NSData* embedICCProfile(NSData *imageData, NSString *iccProfilePath, NSString *f
     if (iccColorSpace) CGColorSpaceRelease(iccColorSpace);
 
     if (ok) {
-        NSLog(@"ICC profile embedded successfully (%lu → %lu bytes)",
+        NSLog(@"ICC profile embedded successfully (%lu -> %lu bytes)",
               (unsigned long)[imageData length], (unsigned long)[outputData length]);
         return outputData;
     }
@@ -2387,7 +2407,11 @@ CGColorSpaceRef createNamedColorSpace(int index) {
     if (index < 0 || index >= NUM_NAMED_COLORSPACES) return NULL;
     CGColorSpaceRef cs = CGColorSpaceCreateWithName(names[index]);
     if (cs) {
-        NSLog(@"Created color space: %@", (__bridge NSString *)CGColorSpaceCopyName(cs));
+        CFStringRef name = CGColorSpaceCopyName(cs);
+        if (name) {
+            NSLog(@"Created color space: %@", (__bridge NSString *)name);
+            CFRelease(name);
+        }
     }
     return cs;
 }
@@ -2427,7 +2451,7 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
     // Create a color space from the ICC profile data
     CGColorSpaceRef iccColorSpace = CGColorSpaceCreateWithICCData((CFDataRef)iccData);
     if (!iccColorSpace) {
-        NSLog(@"ICC color space creation failed — encoding image as-is (fallback)");
+        NSLog(@"ICC color space creation failed -- encoding image as-is (fallback)");
         return encodeImageWithICCPropertiesOrFallback(image, nil, utType);
     }
 
@@ -2438,7 +2462,7 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
 
     // Only re-render for RGB-compatible (3-component) color spaces
     if (nComp != 3) {
-        NSLog(@"ICC profile has %zu components (not RGB) — using metadata/plain fallback", nComp);
+        NSLog(@"ICC profile has %zu components (not RGB) -- using metadata/plain fallback", nComp);
         CGColorSpaceRelease(iccColorSpace);
         return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
     }
@@ -2447,7 +2471,7 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
         iccColorSpace, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
     CGColorSpaceRelease(iccColorSpace);
     if (!ctx) {
-        NSLog(@"Failed to create ICC bitmap context — using metadata/plain fallback");
+        NSLog(@"Failed to create ICC bitmap context -- using metadata/plain fallback");
         return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
     }
 
@@ -2455,11 +2479,11 @@ NSData* encodeImageWithICCProfile(CGImageRef image, NSData *iccData, CFStringRef
     CGImageRef iccImage = CGBitmapContextCreateImage(ctx);
     CGContextRelease(ctx);
     if (!iccImage) {
-        NSLog(@"Failed to create re-rendered ICC image — using metadata/plain fallback");
+        NSLog(@"Failed to create re-rendered ICC image -- using metadata/plain fallback");
         return encodeImageWithICCPropertiesOrFallback(image, iccData, utType);
     }
 
-    // Encode — ImageIO embeds the ICC profile from the image's color space
+    // Encode -- ImageIO embeds the ICC profile from the image's color space
     NSData *outputData = encodeImageWithICCPropertiesOrFallback(iccImage, iccData, utType);
     CGImageRelease(iccImage);
     return outputData;
@@ -2529,7 +2553,7 @@ NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
     // triggering encodeImageWithICCProfile's fallback (encode as-is).
     switch (strategy) {
         case 0: {
-            // Display P3 on sRGB content — valid but wrong gamut
+            // Display P3 on sRGB content -- valid but wrong gamut
             CGColorSpaceRef p3 = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
             if (p3) {
                 NSLog(@"ICC mismatch: Display P3 gamut on sRGB content");
@@ -2557,7 +2581,7 @@ NSData* encodeImageWithMismatchedProfile(CGImageRef image, CFStringRef utType) {
             return nil;
         }
         case 1: {
-            // AdobeRGB on sRGB content — valid but wrong gamma/gamut
+            // AdobeRGB on sRGB content -- valid but wrong gamma/gamut
             CGColorSpaceRef adobeRGB = CGColorSpaceCreateWithName(kCGColorSpaceAdobeRGB1998);
             if (adobeRGB) {
                 NSLog(@"ICC mismatch: AdobeRGB 1998 gamma on sRGB content");
@@ -3089,7 +3113,7 @@ NSData* createTIFFThumbnail(CGImageRef image, size_t maxDim) {
     };
     NSData *result = encodeImageAs(thumbImage, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffOpts);
     CGImageRelease(thumbImage);
-    NSLog(@"TIFF thumbnail: %zux%zu → %zux%zu (%lu bytes)",
+    NSLog(@"TIFF thumbnail: %zux%zu -> %zux%zu (%lu bytes)",
           origW, origH, thumbW, thumbH, (unsigned long)[result length]);
     return result;
 }
@@ -3100,7 +3124,7 @@ NSData* createTIFFThumbnail(CGImageRef image, size_t maxDim) {
  * BMP, GIF, HEIC, WebP, TIFF thumbnail, and OpenEXR where available.
  * Uses CGImageDestination with UTType identifiers for maximum format coverage.
  * @param image Source CGImageRef.
- * @return Dictionary mapping "format.ext" → encoded NSData.
+ * @return Dictionary mapping "format.ext" -> encoded NSData.
  */
 NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     if (!image) return @{};
@@ -3134,7 +3158,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
         NSData *encoded = encodeImageAs(image, formats[i].utType, opts);
         if (encoded) {
             results[[NSString stringWithUTF8String:formats[i].ext]] = encoded;
-            NSLog(@"  %-12s → %lu bytes", formats[i].label, (unsigned long)[encoded length]);
+            NSLog(@"  %-12s -> %lu bytes", formats[i].label, (unsigned long)[encoded length]);
         }
     }
 
@@ -3147,7 +3171,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     NSData *tiffLZW = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, lzwOpts);
     if (tiffLZW) {
         results[@"tiff-lzw.tiff"] = tiffLZW;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-LZW", (unsigned long)[tiffLZW length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-LZW", (unsigned long)[tiffLZW length]);
     }
 
     // TIFF thumbnail (64px max dimension)
@@ -3156,14 +3180,14 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
         results[@"thumb.tiff"] = thumb;
     }
 
-    // HEIC — may not be available on all platforms, try dynamically
+    // HEIC -- may not be available on all platforms, try dynamically
     CFStringRef heicType = (__bridge CFStringRef)@"public.heic";
     NSData *heic = encodeImageAs(image, heicType, @{
         (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
     });
     if (heic) {
         results[@"heic"] = heic;
-        NSLog(@"  %-12s → %lu bytes", "HEIC", (unsigned long)[heic length]);
+        NSLog(@"  %-12s -> %lu bytes", "HEIC", (unsigned long)[heic length]);
     }
 
     // HEIF
@@ -3173,17 +3197,17 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     });
     if (heif) {
         results[@"heif"] = heif;
-        NSLog(@"  %-12s → %lu bytes", "HEIF", (unsigned long)[heif length]);
+        NSLog(@"  %-12s -> %lu bytes", "HEIF", (unsigned long)[heif length]);
     }
 
-    // WebP — available on macOS 14+ / iOS 17+
+    // WebP -- available on macOS 14+ / iOS 17+
     CFStringRef webpType = (__bridge CFStringRef)@"org.webmproject.webp";
     NSData *webp = encodeImageAs(image, webpType, @{
         (__bridge NSString *)kCGImageDestinationLossyCompressionQuality: @(0.8)
     });
     if (webp) {
         results[@"webp"] = webp;
-        NSLog(@"  %-12s → %lu bytes", "WebP", (unsigned long)[webp length]);
+        NSLog(@"  %-12s -> %lu bytes", "WebP", (unsigned long)[webp length]);
     }
 
     // JPEG 2000
@@ -3193,73 +3217,73 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     });
     if (jp2) {
         results[@"jp2"] = jp2;
-        NSLog(@"  %-12s → %lu bytes", "JPEG2000", (unsigned long)[jp2 length]);
+        NSLog(@"  %-12s -> %lu bytes", "JPEG2000", (unsigned long)[jp2 length]);
     }
 
-    // OpenEXR — may not be available
+    // OpenEXR -- may not be available
     CFStringRef exrType = (__bridge CFStringRef)@"com.ilm.openexr-image";
     NSData *exr = encodeImageAs(image, exrType, nil);
     if (exr) {
         results[@"exr"] = exr;
-        NSLog(@"  %-12s → %lu bytes", "OpenEXR", (unsigned long)[exr length]);
+        NSLog(@"  %-12s -> %lu bytes", "OpenEXR", (unsigned long)[exr length]);
     }
 
-    // Adobe DNG — attempt via UTType
+    // Adobe DNG -- attempt via UTType
     CFStringRef dngType = (__bridge CFStringRef)@"com.adobe.raw-image";
     NSData *dng = encodeImageAs(image, dngType, nil);
     if (dng) {
         results[@"dng"] = dng;
-        NSLog(@"  %-12s → %lu bytes", "DNG", (unsigned long)[dng length]);
+        NSLog(@"  %-12s -> %lu bytes", "DNG", (unsigned long)[dng length]);
     }
 
-    // PBMRAW — Portable Bitmap
+    // PBMRAW -- Portable Bitmap
     CFStringRef pbmType = (__bridge CFStringRef)@"public.pbm";
     NSData *pbm = encodeImageAs(image, pbmType, nil);
     if (pbm) {
         results[@"pbm"] = pbm;
-        NSLog(@"  %-12s → %lu bytes", "PBM", (unsigned long)[pbm length]);
+        NSLog(@"  %-12s -> %lu bytes", "PBM", (unsigned long)[pbm length]);
     }
 
-    // TGA — Targa
+    // TGA -- Targa
     CFStringRef tgaType = (__bridge CFStringRef)@"com.truevision.tga-image";
     NSData *tga = encodeImageAs(image, tgaType, nil);
     if (tga) {
         results[@"tga"] = tga;
-        NSLog(@"  %-12s → %lu bytes", "TGA", (unsigned long)[tga length]);
+        NSLog(@"  %-12s -> %lu bytes", "TGA", (unsigned long)[tga length]);
     }
 
-    // ASTC — Adaptive Scalable Texture Compression (Apple GPU format)
+    // ASTC -- Adaptive Scalable Texture Compression (Apple GPU format)
     CFStringRef astcType = (__bridge CFStringRef)@"org.khronos.astc";
     NSData *astc = encodeImageAs(image, astcType, nil);
     if (astc) {
         results[@"astc"] = astc;
-        NSLog(@"  %-12s → %lu bytes", "ASTC", (unsigned long)[astc length]);
+        NSLog(@"  %-12s -> %lu bytes", "ASTC", (unsigned long)[astc length]);
     }
 
-    // KTX — Khronos Texture
+    // KTX -- Khronos Texture
     CFStringRef ktxType = (__bridge CFStringRef)@"org.khronos.ktx";
     NSData *ktx = encodeImageAs(image, ktxType, nil);
     if (ktx) {
         results[@"ktx"] = ktx;
-        NSLog(@"  %-12s → %lu bytes", "KTX", (unsigned long)[ktx length]);
+        NSLog(@"  %-12s -> %lu bytes", "KTX", (unsigned long)[ktx length]);
     }
 
-    // ── Formats targeted at Preview / Notes / iMessage / Mail parsers ──
+    // -- Formats targeted at Preview / Notes / iMessage / Mail parsers --
 
-    // PDF — single-page image PDF (Preview, Mail inline, Notes, iMessage rich links)
+    // PDF -- single-page image PDF (Preview, Mail inline, Notes, iMessage rich links)
     CFStringRef pdfType = (__bridge CFStringRef)@"com.adobe.pdf";
     NSData *pdf = encodeImageAs(image, pdfType, nil);
     if (pdf) {
         results[@"pdf"] = pdf;
-        NSLog(@"  %-12s → %lu bytes", "PDF", (unsigned long)[pdf length]);
+        NSLog(@"  %-12s -> %lu bytes", "PDF", (unsigned long)[pdf length]);
     }
 
-    // ICNS — macOS icon format (Preview, Finder, QuickLook)
+    // ICNS -- macOS icon format (Preview, Finder, QuickLook)
     CFStringRef icnsType = (__bridge CFStringRef)@"com.apple.icns";
     NSData *icns = encodeImageAs(image, icnsType, nil);
     if (icns) {
         results[@"icns"] = icns;
-        NSLog(@"  %-12s → %lu bytes", "ICNS", (unsigned long)[icns length]);
+        NSLog(@"  %-12s -> %lu bytes", "ICNS", (unsigned long)[icns length]);
     }
 
     // TIFF with PackBits compression (common in Mail attachments)
@@ -3271,7 +3295,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     NSData *tiffPB = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, packBitsOpts);
     if (tiffPB) {
         results[@"tiff-packbits.tiff"] = tiffPB;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-PackBits", (unsigned long)[tiffPB length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-PackBits", (unsigned long)[tiffPB length]);
     }
 
     // TIFF with JPEG compression (Preview handles, exercises TIFF+JPEG decoder interplay)
@@ -3283,7 +3307,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     NSData *tiffJpeg = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffJpegOpts);
     if (tiffJpeg) {
         results[@"tiff-jpeg.tiff"] = tiffJpeg;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-JPEG", (unsigned long)[tiffJpeg length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-JPEG", (unsigned long)[tiffJpeg length]);
     }
 
     // TIFF with Deflate/ZIP compression
@@ -3295,7 +3319,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     NSData *tiffDeflate = encodeImageAs(image, (__bridge CFStringRef)UTTypeTIFF.identifier, tiffDeflateOpts);
     if (tiffDeflate) {
         results[@"tiff-deflate.tiff"] = tiffDeflate;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-Deflate", (unsigned long)[tiffDeflate length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-Deflate", (unsigned long)[tiffDeflate length]);
     }
 
     // JPEG with EXIF-heavy properties (iMessage/Mail preview thumbnail path)
@@ -3312,7 +3336,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     NSData *jpegExif = encodeImageAs(image, (__bridge CFStringRef)UTTypeJPEG.identifier, jpegExifOpts);
     if (jpegExif) {
         results[@"jpeg-exif.jpg"] = jpegExif;
-        NSLog(@"  %-12s → %lu bytes", "JPEG-EXIF", (unsigned long)[jpegExif length]);
+        NSLog(@"  %-12s -> %lu bytes", "JPEG-EXIF", (unsigned long)[jpegExif length]);
     }
 
     // HEIC with max quality (iMessage default sending format on modern iOS)
@@ -3321,7 +3345,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     });
     if (heicHQ) {
         results[@"heic-hq.heic"] = heicHQ;
-        NSLog(@"  %-12s → %lu bytes", "HEIC-HQ", (unsigned long)[heicHQ length]);
+        NSLog(@"  %-12s -> %lu bytes", "HEIC-HQ", (unsigned long)[heicHQ length]);
     }
 
     // HEIC with minimum quality (stresses decompressor edge cases)
@@ -3330,37 +3354,37 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
     });
     if (heicLQ) {
         results[@"heic-lq.heic"] = heicLQ;
-        NSLog(@"  %-12s → %lu bytes", "HEIC-LQ", (unsigned long)[heicLQ length]);
+        NSLog(@"  %-12s -> %lu bytes", "HEIC-LQ", (unsigned long)[heicLQ length]);
     }
 
-    // ── ICC Profile Variant Encodings (for CFL fuzzer seed diversity) ──
+    // -- ICC Profile Variant Encodings (for CFL fuzzer seed diversity) --
 
     // TIFF with stripped color space (no ICC metadata)
     NSData *tiffNoICC = encodeImageStrippingColorSpace(image, (__bridge CFStringRef)UTTypeTIFF.identifier);
     if (tiffNoICC) {
         results[@"tiff-no-icc.tiff"] = tiffNoICC;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-noICC", (unsigned long)[tiffNoICC length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-noICC", (unsigned long)[tiffNoICC length]);
     }
 
     // PNG with stripped color space
     NSData *pngNoICC = encodeImageStrippingColorSpace(image, (__bridge CFStringRef)UTTypePNG.identifier);
     if (pngNoICC) {
         results[@"png-no-icc.png"] = pngNoICC;
-        NSLog(@"  %-12s → %lu bytes", "PNG-noICC", (unsigned long)[pngNoICC length]);
+        NSLog(@"  %-12s -> %lu bytes", "PNG-noICC", (unsigned long)[pngNoICC length]);
     }
 
     // TIFF with mismatched ICC profile (exercises ICC parse error paths)
     NSData *tiffMismatch = encodeImageWithMismatchedProfile(image, (__bridge CFStringRef)UTTypeTIFF.identifier);
     if (tiffMismatch) {
         results[@"tiff-icc-mismatch.tiff"] = tiffMismatch;
-        NSLog(@"  %-12s → %lu bytes", "TIFF-mismatch", (unsigned long)[tiffMismatch length]);
+        NSLog(@"  %-12s -> %lu bytes", "TIFF-mismatch", (unsigned long)[tiffMismatch length]);
     }
 
     // PNG with mismatched ICC profile
     NSData *pngMismatch = encodeImageWithMismatchedProfile(image, (__bridge CFStringRef)UTTypePNG.identifier);
     if (pngMismatch) {
         results[@"png-icc-mismatch.png"] = pngMismatch;
-        NSLog(@"  %-12s → %lu bytes", "PNG-mismatch", (unsigned long)[pngMismatch length]);
+        NSLog(@"  %-12s -> %lu bytes", "PNG-mismatch", (unsigned long)[pngMismatch length]);
     }
 
     // TIFF with each of the 7 named color spaces
@@ -3391,7 +3415,7 @@ NSDictionary<NSString *, NSData *>* encodeImageMultiFormat(CGImageRef image) {
                         CFStringRef csName = CGColorSpaceCopyName(namedCS);
                         NSString *key = [NSString stringWithFormat:@"tiff-cs%d.tiff", csIdx];
                         results[key] = csEncoded;
-                        NSLog(@"  TIFF-CS%-5d → %lu bytes (%@)", csIdx,
+                        NSLog(@"  TIFF-CS%-5d -> %lu bytes (%@)", csIdx,
                               (unsigned long)[csEncoded length],
                               csName ? (__bridge NSString *)csName : @"unknown");
                         if (csName) CFRelease(csName);
@@ -3440,7 +3464,7 @@ NSData* mutateICCProfile(NSData *profileData) {
                 bytes[129] = (newCount >> 16) & 0xFF;
                 bytes[130] = (newCount >>  8) & 0xFF;
                 bytes[131] = newCount & 0xFF;
-                NSLog(@"ICC mutation: tag count %u → %u", origCount, newCount);
+                NSLog(@"ICC mutation: tag count %u -> %u", origCount, newCount);
             }
             break;
         }
@@ -3466,7 +3490,7 @@ NSData* mutateICCProfile(NSData *profileData) {
                         bytes[entryOff + 9]  = (bigSize >> 16) & 0xFF;
                         bytes[entryOff + 10] = (bigSize >>  8) & 0xFF;
                         bytes[entryOff + 11] = bigSize & 0xFF;
-                        NSLog(@"ICC mutation: tag[%u] offset→0x%X size→0x%X", tagIdx, bigOffset, bigSize);
+                        NSLog(@"ICC mutation: tag[%u] offset->0x%X size->0x%X", tagIdx, bigOffset, bigSize);
                     }
                 }
             }
@@ -3522,7 +3546,7 @@ NSData* mutateICCProfile(NSData *profileData) {
             bytes[1] = (wrongSize >> 16) & 0xFF;
             bytes[2] = (wrongSize >>  8) & 0xFF;
             bytes[3] = wrongSize & 0xFF;
-            NSLog(@"ICC mutation: profile size header → %u (actual %lu)", wrongSize, (unsigned long)len);
+            NSLog(@"ICC mutation: profile size header -> %u (actual %lu)", wrongSize, (unsigned long)len);
             break;
         }
         case 5: {
@@ -3613,7 +3637,7 @@ NSData* embedICCProfileData(NSData *imageData, NSData *iccData, NSString *format
 #pragma mark - Pipeline Fuzzing
 
 /*!
- * @brief Full pipeline: clean images → multi-format → fuzz → ICC embed → ICC+image fuzz → measure.
+ * @brief Full pipeline: clean images -> multi-format -> fuzz -> ICC embed -> ICC+image fuzz -> measure.
  * @details For each input image from xnuimagetools generators:
  *   Phase 1:   Save the clean image as-is (baseline)
  *   Phase 1.5: Re-encode into all supported formats (PNG, JPEG, TIFF, BMP, GIF,
@@ -3679,7 +3703,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
               (unsigned long)(imgIdx + 1), (unsigned long)[images count], baseName,
               (unsigned long)[cleanData length]);
 
-        // ── Phase 1: Save clean baseline ──
+        // -- Phase 1: Save clean baseline --
         NSString *cleanPath = [cleanDir stringByAppendingPathComponent:
             [NSString stringWithFormat:@"%@_clean.%@", baseName, ext]];
         [cleanData writeToFile:cleanPath atomically:YES];
@@ -3691,7 +3715,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
         writeMetricsJSON(cm, cleanPath);
         totalOutputs++;
 
-        // ── Phase 1.5: Multi-format re-encoding ──
+        // -- Phase 1.5: Multi-format re-encoding --
         UIImage *cleanImage = [UIImage imageWithData:cleanData];
         CGImageRef cgClean = cleanImage ? cleanImage.CGImage : NULL;
         if (cgClean) {
@@ -3714,7 +3738,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
             }
         }
 
-        // ── Phase 2: Fuzz through varied permutations (multi-format output) ──
+        // -- Phase 2: Fuzz through varied permutations (multi-format output) --
         if (cleanImage) {
             int permutations[] = {1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15};
             int numPerms = sizeof(permutations) / sizeof(permutations[0]);
@@ -3748,7 +3772,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
             }
         }
 
-        // ── Phase 3: Embed clean ICC profiles (PNG + TIFF) ──
+        // -- Phase 3: Embed clean ICC profiles (PNG + TIFF) --
         NSArray *iccFormats = @[@"png", @"tiff"];
         for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
             NSString *iccPath = iccProfiles[iccIdx];
@@ -3772,7 +3796,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
             }
         }
 
-        // ── Phase 4: Mutated ICC + fuzzed image (combined attack, multi-format) ──
+        // -- Phase 4: Mutated ICC + fuzzed image (combined attack, multi-format) --
         NSArray *comboFormats = @[@"png", @"tiff", @"jpeg"];
         for (NSUInteger iccIdx = 0; iccIdx < [iccProfiles count]; iccIdx++) {
             NSString *iccPath = iccProfiles[iccIdx];
@@ -3823,7 +3847,7 @@ void performPipelineFuzzing(NSString *inputDir, int iterations) {
             }
         }
 
-        // ── Phase 5: Chained iterations on the clean image ──
+        // -- Phase 5: Chained iterations on the clean image --
         if (iterations > 1) {
             // Save clean image to chain dir as iteration 0 input
             NSString *chainInput = [chainDir stringByAppendingPathComponent:
@@ -3955,13 +3979,13 @@ int main(int argc, const char * argv[]) {
             performAllImagePermutations();
             return 0;
         } else if (pipelineDir) {
-            // Pipeline fuzzing: clean → fuzz → ICC → combo → chain
+            // Pipeline fuzzing: clean -> fuzz -> ICC -> combo -> chain
             NSLog(@"Pipeline fuzzing mode: %@ (%d iterations)", pipelineDir, iterations);
             performPipelineFuzzing(pipelineDir, iterations);
 
             llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
             if (write_fn) { write_fn(); }
-            NSLog(@"XNU Image Fuzzer ✅ Pipeline complete %@", currentTime);
+            NSLog(@"XNU Image Fuzzer OK Pipeline complete %@", currentTime);
             return 0;
 
         } else if (inputDir) {
@@ -3971,7 +3995,7 @@ int main(int argc, const char * argv[]) {
 
             llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
             if (write_fn) { write_fn(); }
-            NSLog(@"XNU Image Fuzzer ✅ Batch complete %@", currentTime);
+            NSLog(@"XNU Image Fuzzer OK Batch complete %@", currentTime);
             return 0;
 
         } else if (chainInput) {
@@ -3981,7 +4005,7 @@ int main(int argc, const char * argv[]) {
 
             llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
             if (write_fn) { write_fn(); }
-            NSLog(@"XNU Image Fuzzer ✅ Chain complete %@", currentTime);
+            NSLog(@"XNU Image Fuzzer OK Chain complete %@", currentTime);
             return 0;
 
         } else if (argc > 2 && argv[1][0] != '-') {
@@ -4001,7 +4025,7 @@ int main(int argc, const char * argv[]) {
             dumpDeviceInfo();
             dumpMacDeviceInfo();
 
-            NSLog(@"XNU Image Fuzzer ✅ %@", currentTime);
+            NSLog(@"XNU Image Fuzzer OK %@", currentTime);
 
             // Flush LLVM coverage data before exit
             llvm_profile_write_file_fn write_fn = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
@@ -5582,7 +5606,7 @@ void createBitmapContextCMYK(CGImageRef cgImg) {
     CGColorSpaceRelease(colorSpace);
 
     if (!ctx) {
-        NSLog(@"Failed to create CMYK bitmap context — falling back to RGB conversion");
+        NSLog(@"Failed to create CMYK bitmap context -- falling back to RGB conversion");
         // Fallback: create an RGB context and convert CMYK data manually
         CGColorSpaceRef rgbSpace = CGColorSpaceCreateDeviceRGB();
         size_t rgbBytesPerRow = width * 4;
@@ -5673,7 +5697,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
 
     size_t width = CGImageGetWidth(cgImg);
     size_t height = CGImageGetHeight(cgImg);
-    // Use 16-bit float components: 4 components × 2 bytes = 8 bytes per pixel
+    // Use 16-bit float components: 4 components x 2 bytes = 8 bytes per pixel
     // (bytesPerRow used for float16 data sizing, float32 context uses floatBytesPerRow)
 
     uint16_t *float16Data = (uint16_t *)calloc(height * width * 4, sizeof(uint16_t));
@@ -5697,7 +5721,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
         }
     }
 
-    // Use 32-bit float context and convert — CoreGraphics doesn't directly support float16 contexts
+    // Use 32-bit float context and convert -- CoreGraphics doesn't directly support float16 contexts
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
     if (!colorSpace) {
         NSLog(@"Failed to create color space for HDR Float16");
@@ -5714,7 +5738,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
         return;
     }
 
-    // Convert float16 → float32 for the bitmap context
+    // Convert float16 -> float32 for the bitmap context
     for (size_t i = 0; i < height * width * 4; i++) {
         uint16_t h = float16Data[i];
         uint32_t sign = (h >> 15) & 1;
@@ -5865,7 +5889,7 @@ void createBitmapContextIndexedColor(CGImageRef cgImg) {
     // Fill with random indices, some deliberately out of range
     for (size_t i = 0; i < height * width; i++) {
         if (arc4random_uniform(20) == 0) {
-            indexData[i] = arc4random_uniform(256); // May exceed numColors — corrupt index
+            indexData[i] = arc4random_uniform(256); // May exceed numColors -- corrupt index
         } else {
             indexData[i] = arc4random_uniform((uint32_t)numColors);
         }
@@ -5943,7 +5967,7 @@ void createBitmapContextIndexedColor(CGImageRef cgImg) {
  * @details Display P3 is a wide-gamut RGB color space used by modern Apple displays.
  * It covers ~25% more colors than sRGB, making it ideal for testing how image decoders
  * handle wide-gamut content. This context exercises CGColorSpaceCreateWithName() with
- * kCGColorSpaceDisplayP3 — a different code path than CGColorSpaceCreateDeviceRGB().
+ * kCGColorSpaceDisplayP3 -- a different code path than CGColorSpaceCreateDeviceRGB().
  *
  * @param cgImg The source image to process.
  */
@@ -5959,7 +5983,7 @@ void createBitmapContextDisplayP3(CGImageRef cgImg) {
     size_t height = CGImageGetHeight(cgImg);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
     if (!colorSpace) {
-        NSLog(@"Failed to create Display P3 color space — falling back to device RGB");
+        NSLog(@"Failed to create Display P3 color space -- falling back to device RGB");
         colorSpace = CGColorSpaceCreateDeviceRGB();
     }
     if (!colorSpace) {
@@ -6013,7 +6037,7 @@ void createBitmapContextDisplayP3(CGImageRef cgImg) {
  *
  * @details BT.2020 (Rec. 2020) is an ultra-wide-gamut color space defined by ITU-R for
  * UHD television. It covers significantly more colors than both sRGB and Display P3.
- * This context exercises CGColorSpaceCreateWithName() with kCGColorSpaceITUR_2020 —
+ * This context exercises CGColorSpaceCreateWithName() with kCGColorSpaceITUR_2020 --
  * testing the least-common wide-gamut path in CoreGraphics. Images with BT.2020 ICC
  * profiles stress color management systems that may not expect out-of-sRGB values.
  *
@@ -6031,7 +6055,7 @@ void createBitmapContextBT2020(CGImageRef cgImg) {
     size_t height = CGImageGetHeight(cgImg);
     CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_2020);
     if (!colorSpace) {
-        NSLog(@"Failed to create BT.2020 color space — falling back to Display P3");
+        NSLog(@"Failed to create BT.2020 color space -- falling back to Display P3");
         colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceDisplayP3);
     }
     if (!colorSpace) {
