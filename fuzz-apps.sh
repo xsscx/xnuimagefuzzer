@@ -1,13 +1,13 @@
 #!/bin/bash
-# fuzz-apps.sh — Feed fuzzed images into macOS system tools and detect crashes.
+# fuzz-apps.sh - Feed verified QA images into macOS tools and detect crashes.
 #
 # Exercises the same image decoding paths as Preview, Mail, Notes, iMessage:
-#   sips          — ImageIO / ColorSync (ICC profile parsing)
-#   qlmanage -t   — QuickLook thumbnails (Finder, Mail, iMessage rich links)
-#   qlmanage -p   — QuickLook preview (Preview.app, Spotlight)
-#   mdimport -t   — Spotlight metadata extraction
-#   tiffutil      — TIFF IFD parsing
-#   textutil      — RTF image embedding (Mail compose path)
+#   sips          - ImageIO / ColorSync (ICC profile parsing)
+#   qlmanage -t   - QuickLook thumbnails (Finder, Mail, iMessage rich links)
+#   qlmanage -p   - QuickLook preview (Preview.app, Spotlight)
+#   mdimport -t   - Spotlight metadata extraction
+#   tiffutil      - TIFF IFD parsing
+#   textutil      - RTF image embedding (Mail compose path)
 #
 # Crash detection:
 #   - Exit codes 128+ (signal: 134=SIGABRT, 137=SIGKILL, 139=SIGSEGV, 138=SIGBUS)
@@ -20,20 +20,20 @@
 #   ./fuzz-apps.sh pipeline-combo/ --timeout 30  # longer timeout for complex images
 #
 # Environment:
-#   FUZZ_APPS_TIMEOUT  — per-tool timeout in seconds (default: 15)
-#   FUZZ_APPS_REPORT   — report output directory (default: /tmp/fuzz-apps-report)
-#   FUZZ_APPS_TOOLS    — comma-separated list of tools to run (default: all)
+#   FUZZ_APPS_TIMEOUT  - per-tool timeout in seconds (default: 15)
+#   FUZZ_APPS_REPORT   - report output directory (default: /tmp/fuzz-apps-report)
+#   FUZZ_APPS_TOOLS    - comma-separated list of tools to run (default: all)
 #                        e.g. FUZZ_APPS_TOOLS=sips,qlmanage-t
 #
 # Output:
-#   $REPORT_DIR/findings.csv     — all results with exit codes
-#   $REPORT_DIR/crashes/         — copies of crash-triggering images
-#   $REPORT_DIR/crash-logs/      — copied DiagnosticReports .ips files
-#   $REPORT_DIR/summary.txt      — human-readable summary
+#   $REPORT_DIR/findings.csv     - all results with exit codes
+#   $REPORT_DIR/crashes/         - copies of crash-triggering images
+#   $REPORT_DIR/crash-logs/      - copied DiagnosticReports .ips files
+#   $REPORT_DIR/summary.txt      - human-readable summary
 
 set -euo pipefail
 
-# ── Configuration ──
+# Configuration
 INPUT_DIR="${1:?Usage: $0 <image-directory> [--timeout N] [--report DIR]}"
 shift
 
@@ -55,6 +55,13 @@ done
 if [[ ! -d "$INPUT_DIR" ]]; then
     echo "Error: $INPUT_DIR is not a directory"
     exit 1
+fi
+
+# A generated QA corpus is accepted only after its manifest verifies. Plain
+# directories remain supported for targeted reproduction inputs.
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+if [[ -f "$INPUT_DIR/manifest.json" ]]; then
+    python3 "$SCRIPT_DIR/contrib/scripts/validate_qa_corpus.py" "$INPUT_DIR"
 fi
 
 # macOS gtimeout or perl fallback
@@ -86,7 +93,7 @@ run_with_timeout() {
     fi
 }
 
-# ── Setup ──
+# Setup
 mkdir -p "$REPORT_DIR/crashes" "$REPORT_DIR/crash-logs"
 QLMANAGE_TMPDIR=$(mktemp -d)
 CSV="$REPORT_DIR/findings.csv"
@@ -97,7 +104,8 @@ echo "file,tool,exit_code,signal,status,size_bytes,format" > "$CSV"
 CRASH_REPORT_DIR="$HOME/Library/Logs/DiagnosticReports"
 BASELINE_REPORTS=$(mktemp)
 if [[ -d "$CRASH_REPORT_DIR" ]]; then
-    ls -1 "$CRASH_REPORT_DIR/" 2>/dev/null | sort > "$BASELINE_REPORTS"
+    find "$CRASH_REPORT_DIR" -mindepth 1 -maxdepth 1 -type f \
+        -exec basename {} \; 2>/dev/null | sort > "$BASELINE_REPORTS"
 fi
 
 # Counters
@@ -169,11 +177,11 @@ run_tool() {
         crash)
             CRASHES=$((CRASHES + 1))
             cp "$file" "$REPORT_DIR/crashes/" 2>/dev/null || true
-            printf "  ❌ CRASH  %-20s exit=%d (%s) %s\n" "$tool_name" "$ec" "$sig" "$(basename "$file")"
+            printf "  CRASH  %-20s exit=%d (%s) %s\n" "$tool_name" "$ec" "$sig" "$(basename "$file")"
             ;;
         timeout)
             TIMEOUTS=$((TIMEOUTS + 1))
-            printf "  ⏱  HANG   %-20s timeout=%ds %s\n" "$tool_name" "$TIMEOUT" "$(basename "$file")"
+            printf "  HANG   %-20s timeout=%ds %s\n" "$tool_name" "$TIMEOUT" "$(basename "$file")"
             ;;
         error)
             ERRORS=$((ERRORS + 1))
@@ -184,21 +192,20 @@ run_tool() {
     esac
 }
 
-# ── Main loop ──
-echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║  fuzz-apps.sh — macOS Image Parser Fuzzing Harness         ║"
-echo "╠══════════════════════════════════════════════════════════════╣"
-echo "║  Input:   $INPUT_DIR"
-echo "║  Timeout: ${TIMEOUT}s per tool invocation"
-echo "║  Report:  $REPORT_DIR"
-echo "║  Tools:   $ENABLED_TOOLS"
-echo "╚══════════════════════════════════════════════════════════════╝"
+# Main loop
+echo "=============================================================="
+echo "  fuzz-apps.sh - macOS Image Parser QA Harness"
+echo "  Input:   $INPUT_DIR"
+echo "  Timeout: ${TIMEOUT}s per tool invocation"
+echo "  Report:  $REPORT_DIR"
+echo "  Tools:   $ENABLED_TOOLS"
+echo "=============================================================="
 echo ""
 
 FILE_COUNT=0
 while IFS= read -r -d '' file; do
     FILE_COUNT=$((FILE_COUNT + 1))
-done < <(find "$INPUT_DIR" -type f -maxdepth 2 | grep -iE "\.($IMAGE_EXTS)$" | tr '\n' '\0')
+done < <(find "$INPUT_DIR" -type f | grep -iE "\.($IMAGE_EXTS)$" | tr '\n' '\0')
 
 echo "Found $FILE_COUNT image files to process"
 echo ""
@@ -220,13 +227,12 @@ while IFS= read -r -d '' file; do
 
     # sips format conversion (exercises full decode+encode path)
     if tool_enabled "sips-convert"; then
-        local_ext="${file##*.}"
-        local_tmp=$(mktemp -u "/tmp/fuzz-sips-XXXXXX.png")
+        local_tmp=$(mktemp "/tmp/fuzz-sips-XXXXXX.png")
         run_tool "$file" "sips-convert" sips -s format png "$file" --out "$local_tmp"
         rm -f "$local_tmp"
     fi
 
-    # qlmanage -t (thumbnail generation — QuickLook/Finder/Mail path)
+    # qlmanage -t (thumbnail generation - QuickLook/Finder/Mail path)
     if tool_enabled "qlmanage-t"; then
         run_tool "$file" "qlmanage-t" qlmanage -t -s 128 -o "$QLMANAGE_TMPDIR" "$file"
     fi
@@ -236,7 +242,7 @@ while IFS= read -r -d '' file; do
         run_tool "$file" "mdimport" mdimport -t "$file"
     fi
 
-    # tiffutil -info (TIFF IFD parsing — only for TIFF files)
+    # tiffutil -info (TIFF IFD parsing - only for TIFF files)
     if tool_enabled "tiffutil"; then
         case "${file##*.}" in
             tiff|tif)
@@ -245,18 +251,19 @@ while IFS= read -r -d '' file; do
         esac
     fi
 
-done < <(find "$INPUT_DIR" -type f -maxdepth 2 | grep -iE "\.($IMAGE_EXTS)$" | sort | tr '\n' '\0')
+done < <(find "$INPUT_DIR" -type f | grep -iE "\.($IMAGE_EXTS)$" | sort | tr '\n' '\0')
 
-# ── Check for new crash reports ──
+# Check for new crash reports
 if [[ -d "$CRASH_REPORT_DIR" ]]; then
     CURRENT_REPORTS=$(mktemp)
-    ls -1 "$CRASH_REPORT_DIR/" 2>/dev/null | sort > "$CURRENT_REPORTS"
+    find "$CRASH_REPORT_DIR" -mindepth 1 -maxdepth 1 -type f \
+        -exec basename {} \; 2>/dev/null | sort > "$CURRENT_REPORTS"
     NEW_REPORTS=$(comm -13 "$BASELINE_REPORTS" "$CURRENT_REPORTS")
     if [[ -n "$NEW_REPORTS" ]]; then
         echo ""
-        echo "🔥 New DiagnosticReports detected:"
+        echo "New DiagnosticReports detected:"
         while IFS= read -r report; do
-            echo "  → $report"
+            echo "  $report"
             cp "$CRASH_REPORT_DIR/$report" "$REPORT_DIR/crash-logs/" 2>/dev/null || true
         done <<< "$NEW_REPORTS"
     fi
@@ -264,10 +271,10 @@ if [[ -d "$CRASH_REPORT_DIR" ]]; then
 fi
 rm -f "$BASELINE_REPORTS"
 
-# ── Cleanup ──
+# Cleanup
 rm -rf "$QLMANAGE_TMPDIR"
 
-# ── Summary ──
+# Summary
 cat > "$SUMMARY" << EOF
 fuzz-apps.sh Report
 ====================
@@ -277,10 +284,10 @@ Tool invocations: $TOTAL
 Timeout: ${TIMEOUT}s
 
 Results:
-  ✅ Clean:    $CLEAN
-  ⚠️  Errors:   $ERRORS
-  ⏱  Timeouts: $TIMEOUTS
-  ❌ Crashes:  $CRASHES
+  Clean:    $CLEAN
+  Errors:   $ERRORS
+  Timeouts: $TIMEOUTS
+  Crashes:  $CRASHES
 
 Crash-triggering files copied to: $REPORT_DIR/crashes/
 DiagnosticReports copied to: $REPORT_DIR/crash-logs/
@@ -288,15 +295,15 @@ Full CSV: $REPORT_DIR/findings.csv
 EOF
 
 echo ""
-echo "══════════════════════════════════════════════════════════════"
+echo "=============================================================="
 echo "  Results: $CLEAN clean, $ERRORS errors, $TIMEOUTS timeouts, $CRASHES CRASHES"
 echo "  CSV:     $CSV"
 if [[ $CRASHES -gt 0 ]]; then
     echo ""
-    echo "  🔥 $CRASHES CRASH(ES) DETECTED — check $REPORT_DIR/crashes/"
+    echo "  $CRASHES CRASH(ES) DETECTED - check $REPORT_DIR/crashes/"
     echo "  Crash-triggering files and .ips logs saved."
 fi
-echo "══════════════════════════════════════════════════════════════"
+echo "=============================================================="
 
 # Exit with 2 if crashes found (distinguishable from tool errors)
 [[ $CRASHES -gt 0 ]] && exit 2

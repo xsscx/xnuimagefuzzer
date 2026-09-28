@@ -16,7 +16,7 @@
 #
 # Output:
 #   /tmp/native-build/xnuimagefuzzer              # instrumented helper binary
-#   /tmp/fuzzed-output/                           # fuzzed outputs, ICC variants, metrics, pipeline artifacts
+#   /tmp/fuzzed-output/                           # verified QA corpus and source images
 #   /tmp/profraw/                                 # coverage profraw
 #   /tmp/coverage-report/                         # llvm-cov reports
 #
@@ -93,106 +93,63 @@ do_build() {
 
 # Run
 do_run() {
-  banner "Running xnuimagefuzzer under sanitizers with coverage"
+  banner "Running deterministic QA generation under sanitizers"
 
   [ -x "$BINARY" ] || die "Binary not found at $BINARY - run with --build-only first"
-
   mkdir -p "$PROFRAW_DIR" "$FUZZ_DIR"
   : > /tmp/fuzzer-run.log
-  # Clean stale data, including nested pipeline output.
   find "$PROFRAW_DIR" -mindepth 1 -delete 2>/dev/null || true
   find "$FUZZ_DIR" -mindepth 1 -delete 2>/dev/null || true
 
-  # Phase 1: Default mode - 19 seed specs routed through the current default permutation set
-  echo "-- Phase 1: Default mode (seed generation + matched permutations) --"
-  set +e
-  FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
-  FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
-  LLVM_PROFILE_FILE="$PROFRAW_DIR/fuzzer-%m_%p.profraw" \
-  ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
-  UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-    "$BINARY" 2>&1 | tee /tmp/fuzzer-run.log
-  RUN_EXIT=${PIPESTATUS[0]}
-  set -e
-
-  echo "Phase 1 exit code: $RUN_EXIT"
-
-  # Phase 2: Pipeline mode - exercises encodeImageMultiFormat, encodeImageAs, createTIFFThumbnail
-  echo ""
-  echo "-- Phase 2: Pipeline mode (multi-format encoding) --"
-  PIPELINE_DIR="$FUZZ_DIR/pipeline"
-  mkdir -p "$PIPELINE_DIR"
-  # Copy a few seed images as pipeline input
-  find "$FUZZ_DIR" -maxdepth 1 -name "*.png" -type f 2>/dev/null | head -3 | while read f; do
-    cp "$f" "$PIPELINE_DIR/" 2>/dev/null || true
-  done
+  SOURCE_DIR="$FUZZ_DIR/sources"
+  CORPUS_DIR="$FUZZ_DIR/corpus"
+  mkdir -p "$SOURCE_DIR"
 
   set +e
-  FUZZ_OUTPUT_DIR="$FUZZ_DIR" \
-  FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
-  LLVM_PROFILE_FILE="$PROFRAW_DIR/pipeline-%m_%p.profraw" \
-  ASAN_OPTIONS="detect_leaks=0:halt_on_error=0" \
-  UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0" \
-    "$BINARY" --pipeline "$PIPELINE_DIR" --iterations 2 2>&1 | tee -a /tmp/fuzzer-run.log
-  PIPELINE_EXIT=${PIPESTATUS[0]}
+  XNU_IMAGE_OUTPUT_DIR="$SOURCE_DIR" \
+  LLVM_PROFILE_FILE="$PROFRAW_DIR/clean-%m_%p.profraw" \
+  ASAN_OPTIONS="detect_leaks=0:halt_on_error=1" \
+  UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
+    "$BINARY" --clean 2>&1 | tee /tmp/fuzzer-run.log
+  CLEAN_EXIT=${PIPESTATUS[0]}
   set -e
 
-  echo "Phase 2 exit code: $PIPELINE_EXIT"
+  SAMPLE=$(find "$SOURCE_DIR" -maxdepth 1 -type f -name 'clean-*.png' | sort | sed -n '1p')
+  [ -n "$SAMPLE" ] || die "Clean generation produced no PNG input"
+  FUZZED_SAMPLE="$SOURCE_DIR/fuzzed-chart-sample.png"
+  set +e
+  LLVM_PROFILE_FILE="$PROFRAW_DIR/pixel-%m_%p.profraw" \
+  ASAN_OPTIONS="detect_leaks=0:halt_on_error=1" \
+  UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=1" \
+    "$BINARY" --fuzz-image "$SAMPLE" --output "$FUZZED_SAMPLE" --seed 1 \
+    2>&1 | tee -a /tmp/fuzzer-run.log
+  PIXEL_EXIT=${PIPESTATUS[0]}
+  set -e
 
-  FILE_COUNT=$(find "$FUZZ_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-  PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name "*.profraw" -type f 2>/dev/null | wc -l | tr -d ' ')
+  python3 "$REPO_ROOT/contrib/scripts/build_qa_corpus.py" \
+    --input "$SOURCE_DIR" \
+    --output "$CORPUS_DIR" \
+    --icc-mode both
+  python3 "$REPO_ROOT/contrib/scripts/validate_qa_corpus.py" "$CORPUS_DIR"
 
-  echo ""
-  echo "Phase 1:      $RUN_EXIT"
-  echo "Phase 2:      $PIPELINE_EXIT"
-  echo "Fuzzed files: $FILE_COUNT"
-  echo "Profraw:      $PROFRAW_COUNT"
+  if [ "${RUN_LEGACY_FUZZ:-0}" = "1" ]; then
+    LEGACY_DIR="$FUZZ_DIR/legacy-explicit"
+    mkdir -p "$LEGACY_DIR"
+    FUZZ_OUTPUT_DIR="$LEGACY_DIR" \
+    FUZZ_ICC_DIR="/System/Library/ColorSync/Profiles" \
+    LLVM_PROFILE_FILE="$PROFRAW_DIR/legacy-%m_%p.profraw" \
+      "$BINARY" --legacy-default-fuzz 2>&1 | tee -a /tmp/fuzzer-run.log
+  fi
 
-  # Check for ASAN/UBSAN findings in output
   ASAN_HITS=$(grep -c "ERROR: AddressSanitizer" /tmp/fuzzer-run.log 2>/dev/null || true)
-  ASAN_HITS="${ASAN_HITS:-0}"
   UBSAN_HITS=$(grep -c "runtime error:" /tmp/fuzzer-run.log 2>/dev/null || true)
-  UBSAN_HITS="${UBSAN_HITS:-0}"
-  if [ "$ASAN_HITS" -gt 0 ]; then echo "WARN: ASAN findings: $ASAN_HITS"; fi
-  if [ "$UBSAN_HITS" -gt 0 ]; then echo "WARN: UBSAN findings: $UBSAN_HITS"; fi
-
-  MONO_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name '1Bit_*.png' 2>/dev/null | wc -l | tr -d ' ')
-  REAL_ICC_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name 'fuzzed_image_*_icc_*.*' ! -name '*_icc_mismatch.*' ! -name '*_icc_mutated.*' 2>/dev/null | wc -l | tr -d ' ')
-  MUTATED_ICC_COUNT=$(find "$FUZZ_DIR" -maxdepth 1 -type f -name 'fuzzed_image_*_icc_mutated.*' 2>/dev/null | wc -l | tr -d ' ')
-
-  echo "Top-level monochrome outputs: $MONO_COUNT"
-  echo "Top-level real ICC outputs:   $REAL_ICC_COUNT"
-  echo "Top-level mutated ICC outputs:$MUTATED_ICC_COUNT"
-
-  [ "$MONO_COUNT" -gt 0 ] || echo "WARN: No monochrome outputs (known issue - manual review needed)"
-  [ "$REAL_ICC_COUNT" -gt 0 ] || die "No real ICC variants produced in default mode"
-  [ "$MUTATED_ICC_COUNT" -gt 0 ] || die "No mutated ICC variants produced in default mode"
-
-  BAD_REGULAR_OUTPUTS=$(
-    find "$FUZZ_DIR" -maxdepth 1 -type f \
-      \( -name 'seed_*.png' -o -name 'seed_icc_*.png' -o -name 'fuzzed_image_*' -o -name '1Bit_*.png' \) \
-      ! -name '*.json' -print0 2>/dev/null | \
-    while IFS= read -r -d '' f; do
-      t=$(file -b "$f")
-      if [ "$t" = "data" ] || printf '%s\n' "$t" | grep -Eiq 'empty|corrupt|broken|invalid|cannot'; then
-        printf '%s\t%s\n' "$(basename "$f")" "$t"
-      fi
-    done
-  )
-  if [ -n "$BAD_REGULAR_OUTPUTS" ]; then
-    echo "ERROR: Structurally broken regular outputs detected:"
-    echo "$BAD_REGULAR_OUTPUTS"
-    die "Regular outputs must remain decodable; only corrupted_* files may be structurally invalid"
-  fi
-
-  [ "$FILE_COUNT" -ge 80 ] || echo "WARN: Expected >=80 fuzzed files, got $FILE_COUNT (ICC paths may need FUZZ_ICC_DIR)"
+  PROFRAW_COUNT=$(find "$PROFRAW_DIR" -name '*.profraw' -type f | wc -l | tr -d ' ')
+  [ "${ASAN_HITS:-0}" -eq 0 ] || die "AddressSanitizer findings detected"
+  [ "${UBSAN_HITS:-0}" -eq 0 ] || die "UndefinedBehaviorSanitizer findings detected"
+  [ "$CLEAN_EXIT" -eq 0 ] || die "Clean generation failed"
+  [ "$PIXEL_EXIT" -eq 0 ] || die "Deterministic pixel fuzzing failed"
   [ "$PROFRAW_COUNT" -gt 0 ] || die "No profraw files - coverage collection failed"
-  if [ "$RUN_EXIT" -ne 0 ] || [ "$PIPELINE_EXIT" -ne 0 ]; then
-    DO_RUN_STATUS=1
-    echo "WARN: One or more fuzzing phases exited nonzero"
-    return
-  fi
-  echo "Run complete"
+  echo "Run complete: clean=$CLEAN_EXIT pixel=$PIXEL_EXIT profraw=$PROFRAW_COUNT"
 }
 
 # Coverage

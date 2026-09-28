@@ -1,20 +1,3 @@
-###############################################################
-#
-# Intent: xnuimagefuzzer-build-and-test
-#
-# Build the XNU Image Fuzzer iOS app with xcodebuild and run
-# basic smoke tests on the simulator. Security hardening modeled
-# on iccDEV/.github/workflows/:
-#   - Pinned action SHAs (immutable, auditable)
-#   - Explicit least-privilege permissions
-#   - Credential hardening
-#   - BASH_ENV=/dev/null, hardened shell
-#   - Concurrency control with cancel-in-progress
-#   - persist-credentials: false on checkout
-#   - No user-controllable inputs in run: blocks
-#
-###############################################################
-
 name: xnuimagefuzzer-build-and-test
 
 permissions:
@@ -26,9 +9,6 @@ concurrency:
 
 env:
   BASH_ENV: /dev/null
-  SCHEME: "XNU Image Fuzzer"
-  PROJECT: "XNU Image Fuzzer.xcodeproj"
-  DESTINATION: "generic/platform=iOS Simulator"
 
 defaults:
   run:
@@ -38,10 +18,10 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-ios:
-    name: Build iOS (Simulator)
+  qa-corpus:
+    name: Deterministic image and ICC QA
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -54,505 +34,44 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
-      - name: Show Xcode version
+      - name: Unit tests
         run: |
           set -euo pipefail
-          xcodebuild -version
-          xcrun simctl list runtimes
-          echo "---"
-          xcodebuild -project "$PROJECT" -list 2>&1 || true
+          python3 -m unittest contrib/scripts/test_icc_container.py
 
-      - name: Build for iOS Simulator (Debug)
+      - name: Generate and validate twice
         run: |
           set -euo pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            2>&1 | tee /tmp/xcodebuild-debug.log
-          echo "✅ Debug build succeeded"
+          .github/scripts/generate-qa-images.sh /tmp/qa-one both both --seed 1
+          .github/scripts/generate-qa-images.sh /tmp/qa-two both both --seed 1
+          python3 contrib/scripts/validate_qa_corpus.py /tmp/qa-one
+          python3 contrib/scripts/validate_qa_corpus.py /tmp/qa-two
+          diff -u /tmp/qa-one/manifest.json /tmp/qa-two/manifest.json
+          find /tmp/qa-one -type f ! -name manifest.json -print0 | sort -z | \
+            xargs -0 shasum -a 256 | sed 's#/tmp/qa-one/##' > /tmp/qa-one.sha256
+          find /tmp/qa-two -type f ! -name manifest.json -print0 | sort -z | \
+            xargs -0 shasum -a 256 | sed 's#/tmp/qa-two/##' > /tmp/qa-two.sha256
+          diff -u /tmp/qa-one.sha256 /tmp/qa-two.sha256
 
-      - name: Build for iOS Simulator (Release)
+      - name: Capture macOS malformed ICC outcomes
         run: |
           set -euo pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Release \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            2>&1 | tee /tmp/xcodebuild-release.log
-          echo "✅ Release build succeeded"
+          .github/scripts/generate-qa-images.sh /tmp/qa-roundtrip both clean \
+            --include-mutated --apple-roundtrip --seed 7
+          python3 contrib/scripts/validate_qa_corpus.py /tmp/qa-roundtrip
 
-      - name: Verify build artifacts
-        id: verify
-        run: |
-          set -euo pipefail
-          # Use -sdk iphonesimulator to get correct BUILT_PRODUCTS_DIR
-          BUILD_DIR=$(xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -sdk iphonesimulator \
-            -configuration Debug \
-            -showBuildSettings \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>/dev/null | grep -m1 'BUILT_PRODUCTS_DIR' | awk '{print $3}')
-
-          APP_PATH="$BUILD_DIR/XNU Image Fuzzer.app"
-          if [ -d "$APP_PATH" ]; then
-            echo "✅ App bundle exists: $APP_PATH"
-            ls -la "$APP_PATH/"
-            BINARY="$APP_PATH/XNU Image Fuzzer"
-            if [ -f "$BINARY" ]; then
-              file "$BINARY"
-              echo "✅ Binary is valid"
-              echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
-            else
-              echo "❌ Binary not found in app bundle"
-              exit 1
-            fi
-          else
-            echo "❌ App bundle not found at $APP_PATH"
-            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -maxdepth 5 2>/dev/null | sed -n '1,5p'
-            exit 1
-          fi
-
-      - name: Upload binary artifact
+      - name: Upload verified corpus
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: xnuimagefuzzer-app-bundle
-          path: ${{ steps.verify.outputs.app_path }}
+          name: verified-image-icc-qa
+          path: /tmp/qa-one/
           retention-days: 14
           if-no-files-found: error
 
-  analyze:
-    name: Static Analysis (Clang)
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Credential hardening
-        run: |
-          set -euo pipefail
-          git config --global credential.helper ""
-          unset GITHUB_TOKEN || true
-
-      - name: Run Clang Static Analyzer
-        run: |
-          set -euo pipefail
-          xcodebuild analyze \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            CLANG_ANALYZER_OUTPUT=text \
-            CLANG_ANALYZER_OUTPUT_DIR=/tmp/analyzer-output \
-            RUN_CLANG_STATIC_ANALYZER=YES \
-            | tee /tmp/xcodebuild-analyze.log \
-            | tail -30
-          echo "✅ Static analysis completed"
-
-      - name: Check for analyzer warnings
-        run: |
-          set -euo pipefail
-          source .github/scripts/sanitize-sed.sh
-          warnings=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
-          analyzer_warnings=$(grep -c "CLANG_ANALYZER" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
-          echo "Compiler warnings: $(sanitize_line "$warnings")"
-          echo "Analyzer findings: $(sanitize_line "$analyzer_warnings")"
-
-          # Check for analyzer output files
-          if [ -d /tmp/analyzer-output ]; then
-            count=$(find /tmp/analyzer-output -name "*.plist" 2>/dev/null | wc -l)
-            echo "Analyzer report files: $count"
-            if [ "$count" -gt 0 ]; then
-              echo "⚠️  Static analyzer found potential issues"
-              find /tmp/analyzer-output -name "*.plist" -exec basename {} \; | sed -n '1,10p'
-            fi
-          fi
-          echo "✅ Analysis review complete"
-
-  generate-images:
-    name: Generate & Validate Fuzzed Images
-    runs-on: macos-latest
-    needs: build-ios
-    timeout-minutes: 20
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Credential hardening
-        run: |
-          set -euo pipefail
-          git config --global credential.helper ""
-          unset GITHUB_TOKEN || true
-
-      - name: Discover simulator
-        id: sim
-        run: |
-          set -euo pipefail
-          SIM_INFO=$(xcrun simctl list devices available -j \
-            | python3 -c "
-          import json, sys
-          data = json.load(sys.stdin)
-          for runtime, devices in data['devices'].items():
-              if 'iOS' in runtime:
-                  for d in devices:
-                      if d['isAvailable'] and 'iPhone' in d['name']:
-                          print(d['udid'])
-                          print(d['name'])
-                          sys.exit(0)
-          sys.exit(1)
-          ")
-          SIM_UDID=$(echo "$SIM_INFO" | sed -n '1p')
-          SIM_NAME=$(echo "$SIM_INFO" | tail -1)
-          echo "sim_udid=$SIM_UDID" >> "$GITHUB_OUTPUT"
-          echo "✅ Found simulator: $SIM_NAME ($SIM_UDID)"
-
-      - name: Build for simulator
-        run: |
-          set -euo pipefail
-          SIM_DEST="platform=iOS Simulator,id=${{ steps.sim.outputs.sim_udid }}"
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$SIM_DEST" \
-            -configuration Debug \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            2>&1 | tee /tmp/xcodebuild-sim.log | tail -5
-          echo "✅ Build completed"
-
-      - name: Generate fuzzed image corpus
-        run: |
-          set -euo pipefail
-          SIM_UDID="${{ steps.sim.outputs.sim_udid }}"
-          OUTPUT_DIR="/tmp/fuzzed_images"
-          ICC_DIR="/System/Library/ColorSync/Profiles"
-          mkdir -p "$OUTPUT_DIR"
-          [ -d "$ICC_DIR" ] || { echo "❌ ICC profile directory missing: $ICC_DIR"; exit 1; }
-
-          # Boot the simulator
-          xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
-          sleep 5
-          # Verify simulator is actually booted
-          SIM_STATE=$(xcrun simctl list devices | grep "$SIM_UDID" | grep -o '(Booted)' || true)
-          if [ -z "$SIM_STATE" ]; then
-            echo "⚠️  Simulator not in Booted state, retrying..."
-            xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
-            sleep 2
-            xcrun simctl boot "$SIM_UDID" 2>/dev/null || true
-            sleep 5
-          fi
-          echo "✅ Simulator booted"
-
-          # Install the app
-          BUILD_DIR=$(xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -sdk iphonesimulator \
-            -configuration Debug \
-            -showBuildSettings \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>/dev/null | grep -m1 'BUILT_PRODUCTS_DIR' | awk '{print $3}')
-          APP_PATH="$BUILD_DIR/XNU Image Fuzzer.app"
-          xcrun simctl install "$SIM_UDID" "$APP_PATH"
-          echo "✅ App installed"
-
-          # Launch with FUZZ_OUTPUT_DIR and FUZZ_ICC_DIR via SIMCTL_CHILD_ prefix
-          SIMCTL_CHILD_FUZZ_OUTPUT_DIR="$OUTPUT_DIR" \
-          SIMCTL_CHILD_FUZZ_ICC_DIR="$ICC_DIR" \
-            xcrun simctl launch --console-pty "$SIM_UDID" cx.srd.xnuimagefuzzer \
-            2>&1 | tail -40 || true
-
-          # Give it time to finish writing
-          sleep 3
-
-          # List generated files
-          echo "--- Generated files ---"
-          ls -la "$OUTPUT_DIR/" 2>/dev/null || true
-          FILE_COUNT=$(find "$OUTPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "Total files generated: $FILE_COUNT"
-
-          if [ "$FILE_COUNT" -eq 0 ]; then
-            # Fallback: check app container Documents directory
-            echo "⚠️  No files in $OUTPUT_DIR, checking app container..."
-            CONTAINER=$(xcrun simctl get_app_container "$SIM_UDID" cx.srd.xnuimagefuzzer data 2>/dev/null || true)
-            if [ -n "$CONTAINER" ]; then
-              echo "App data container: $CONTAINER"
-              find "$CONTAINER" \( -name "*.png" -o -name "*.jpg" -o -name "*.gif" -o -name "*.json" -o -name "*.csv" \) \
-                2>/dev/null | sed -n '1,20p'
-              # Copy any found outputs to the artifact directory
-              find "$CONTAINER" \
-                \( -name "fuzzed_*" -o -name "seed_*" -o -name "corrupted_*" -o -name "1Bit_*" -o -name "*.metrics.json" -o -name "fuzz_metrics_summary.csv" \) \
-                -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
-              FILE_COUNT=$(find "$OUTPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-              echo "Files after container scan: $FILE_COUNT"
-            fi
-            # Also check /tmp for seed images
-            find /tmp -maxdepth 1 -name "fuzzed_image_*.png" -exec cp {} "$OUTPUT_DIR/" \; 2>/dev/null || true
-            FILE_COUNT=$(find "$OUTPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-          fi
-
-          # Shutdown
-          xcrun simctl terminate "$SIM_UDID" cx.srd.xnuimagefuzzer 2>/dev/null || true
-          xcrun simctl shutdown "$SIM_UDID" 2>/dev/null || true
-          echo "✅ Image generation complete ($FILE_COUNT files)"
-
-      - name: Validate generated images
-        run: |
-          set -euo pipefail
-          OUTPUT_DIR="/tmp/fuzzed_images"
-          ERRORS=0
-
-          check_exact_count() {
-            local label="$1"
-            local actual="$2"
-            local expected="$3"
-            if [ "$actual" -ne "$expected" ]; then
-              echo "❌ $label: expected $expected, got $actual"
-              ERRORS=$((ERRORS + 1))
-            else
-              echo "✅ $label: $actual"
-            fi
-          }
-
-          echo "=== Image Validation Report ==="
-
-          SEED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
-          CORRUPTED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "corrupted_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
-          SEED_METRICS_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_perm*.metrics.json" 2>/dev/null | wc -l | tr -d ' ')
-          SEED_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_icc_perm*.png" 2>/dev/null | wc -l | tr -d ' ')
-          SEED_ICC_METRICS_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "seed_icc_perm*.metrics.json" 2>/dev/null | wc -l | tr -d ' ')
-          BASE_FUZZED_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*" ! -name "*.json" ! -name "*_no_icc.*" ! -name "*_icc_*.*" 2>/dev/null | wc -l | tr -d ' ')
-          NO_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_no_icc.*" 2>/dev/null | wc -l | tr -d ' ')
-          MISMATCH_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_mismatch.*" 2>/dev/null | wc -l | tr -d ' ')
-          REAL_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_*.*" ! -name "*_icc_mismatch.*" ! -name "*_icc_mutated.*" 2>/dev/null | wc -l | tr -d ' ')
-          MUTATED_ICC_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzzed_image_*_icc_mutated.*" 2>/dev/null | wc -l | tr -d ' ')
-          MONO_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "1Bit_*.png" 2>/dev/null | wc -l | tr -d ' ')
-          SUMMARY_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "fuzz_metrics_summary.csv" 2>/dev/null | wc -l | tr -d ' ')
-          TOTAL_FILE_COUNT=$(find "$OUTPUT_DIR" -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
-
-          check_exact_count "Seed PNGs" "$SEED_COUNT" 19
-          check_exact_count "Corrupted PNGs" "$CORRUPTED_COUNT" 19
-          check_exact_count "Seed metrics JSON" "$SEED_METRICS_COUNT" 19
-          check_exact_count "Seed ICC PNGs" "$SEED_ICC_COUNT" 19
-          check_exact_count "Seed ICC metrics JSON" "$SEED_ICC_METRICS_COUNT" 19
-          check_exact_count "Base fuzzed images" "$BASE_FUZZED_COUNT" 62
-          check_exact_count "No-ICC variants" "$NO_ICC_COUNT" 32
-          check_exact_count "ICC mismatch variants" "$MISMATCH_COUNT" 32
-          check_exact_count "Real ICC variants" "$REAL_ICC_COUNT" 38
-          check_exact_count "Mutated ICC variants" "$MUTATED_ICC_COUNT" 32
-          if [ "$MONO_COUNT" -gt 0 ]; then
-            echo "✅ Monochrome PNGs: $MONO_COUNT"
-          else
-            echo "⚠️  Monochrome PNGs: 0 (known issue — manual review needed)"
-          fi
-          check_exact_count "Summary CSV files" "$SUMMARY_COUNT" 1
-          check_exact_count "Total files" "$TOTAL_FILE_COUNT" 292
-
-          if [ "$SUMMARY_COUNT" -eq 1 ]; then
-            SUMMARY_LINES=$(wc -l < "$OUTPUT_DIR/fuzz_metrics_summary.csv" | tr -d ' ')
-            check_exact_count "Summary CSV lines" "$SUMMARY_LINES" 39
-          fi
-
-          # Validate each file
-          while IFS= read -r -d '' img; do
-            fname=$(basename "$img")
-            size=$(stat -f%z "$img" 2>/dev/null || stat -c%s "$img" 2>/dev/null || echo "0")
-
-            if [ "$size" -eq 0 ]; then
-              echo "❌ $fname: empty file (0 bytes)"
-              ERRORS=$((ERRORS + 1))
-              continue
-            fi
-
-            # Check file type via magic bytes
-            ftype=$(file -b "$img")
-            echo "✅ $fname: ${size} bytes — $ftype"
-            case "$fname" in
-              corrupted_*.png|*.metrics.json|fuzz_metrics_summary.csv)
-                continue
-                ;;
-            esac
-
-            case "$ftype" in
-              data|*empty*|*corrupt*|*broken*|*invalid*|*cannot*)
-                echo "❌ $fname: regular output is structurally invalid ($ftype)"
-                ERRORS=$((ERRORS + 1))
-                ;;
-            esac
-          done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -print0 | sort -z)
-
-          echo "=== Validation Summary ==="
-          if [ "$ERRORS" -gt 0 ]; then
-            echo "❌ $ERRORS validation errors found"
-            exit 1
-          fi
-          echo "✅ Simulator corpus validated successfully"
-
-      - name: Upload fuzzed images
+      - name: Upload macOS ICC outcome evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: fuzzed-images
-          path: /tmp/fuzzed_images/
+          name: macos-malformed-icc-outcomes
+          path: /tmp/qa-roundtrip/
           retention-days: 14
-          if-no-files-found: warn
-
-      - name: Check crash logs
-        if: always()
-        run: |
-          set -euo pipefail
-          source .github/scripts/sanitize-sed.sh
-          CRASH_DIR=~/Library/Logs/DiagnosticReports
-          if [ -d "$CRASH_DIR" ]; then
-            crashes=$(find "$CRASH_DIR" -name "*XNU*Image*Fuzzer*" -mmin -10 2>/dev/null || true)
-            if [ -n "$crashes" ]; then
-              echo "⚠️  Crash logs detected during image generation:"
-              echo "$crashes" | while read -r f; do
-                echo "--- $(sanitize_line "$(basename "$f")") ---"
-                head -30 "$f"
-              done
-            fi
-          fi
-          echo "✅ Crash log check complete"
-
-  commit-images:
-    name: Commit Fuzzed Images
-    runs-on: ubuntu-latest
-    needs: generate-images
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: true
-
-      - name: Download fuzzed images artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: fuzzed-images
-          path: /tmp/fuzzed-download
-
-      - name: Commit images to fuzzed-images directory
-        run: |
-          set -euo pipefail
-
-          TIMESTAMP=$(date -u '+%Y-%m-%d-%H%M%S')
-          DEST_DIR="fuzzed-images/${TIMESTAMP}"
-          mkdir -p "$DEST_DIR"
-
-          FILE_COUNT=$(find /tmp/fuzzed-download -type f 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$FILE_COUNT" -eq 0 ]; then
-            echo "⚠️  No fuzzed images to commit"
-            exit 0
-          fi
-
-          cp /tmp/fuzzed-download/* "$DEST_DIR/"
-          echo "Copied $FILE_COUNT files to $DEST_DIR"
-          ls -la "$DEST_DIR/"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "fuzzed-images/"
-          git commit -m "fuzzed-images: ${TIMESTAMP} — ${FILE_COUNT} files
-
-          Generated by xnuimagefuzzer-build-and-test workflow
-          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-          # Pull --rebase in case remote advanced during the workflow run
-          git pull --rebase origin main
-          git push
-          echo "✅ Committed $FILE_COUNT fuzzed images to $DEST_DIR"
-
-  extract-seeds:
-    name: Extract ICC Seeds for CFL
-    runs-on: macos-latest
-    needs: generate-images
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Download fuzzed images
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          name: fuzzed-images
-          path: /tmp/seed-input
-        continue-on-error: true
-
-      - name: Extract ICC profiles and TIFF seeds
-        run: |
-          set -euo pipefail
-          INPUT_DIR="/tmp/seed-input"
-          OUTPUT_DIR="/tmp/extracted-seeds"
-          mkdir -p "$OUTPUT_DIR"
-
-          TOTAL=$(find "$INPUT_DIR" -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "Input files: $TOTAL"
-
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "⚠️  No input files for seed extraction"
-            exit 0
-          fi
-
-          python3 contrib/scripts/extract-icc-seeds.py \
-            --input "$INPUT_DIR" \
-            --output "$OUTPUT_DIR" \
-            2>&1 || true
-
-          echo ""
-          echo "── Extracted Seeds ──"
-          ICC_COUNT=$(find "$OUTPUT_DIR/icc" -type f 2>/dev/null | wc -l | tr -d ' ')
-          TIFF_COUNT=$(find "$OUTPUT_DIR/tiff" -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "ICC profiles: $ICC_COUNT"
-          echo "TIFF files:   $TIFF_COUNT"
-
-          echo "## Seed Extraction" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Input files | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ICC profiles extracted | $ICC_COUNT |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| TIFF seeds extracted | $TIFF_COUNT |" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload extracted seeds artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cfl-seeds
-          path: /tmp/extracted-seeds/
-          retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error

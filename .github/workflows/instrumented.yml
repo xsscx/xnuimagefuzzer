@@ -1,30 +1,3 @@
-###############################################################
-#
-# Intent: xnuimagefuzzer-instrumented
-#
-# Two-job pipeline:
-#   Job 1 - ASAN+UBSAN sanitizer testing via xcodebuild (Mac Catalyst)
-#   Job 2 - Code coverage via native clang (arm64, no xcodebuild)
-#
-# Xcode's CLANG_ENABLE_CODE_COVERAGE=YES does NOT inject
-# -fprofile-instr-generate for Mac Catalyst builds, so coverage
-# is handled exclusively by the native-coverage job.
-#
-# Produces:
-#   - ASAN+UBSAN sanitizer findings report
-#   - Fuzzed images generated under sanitizers
-#   - Code coverage reports (llvm-cov text + HTML + lcov)
-#
-# Security hardening (iccDEV patterns):
-#   - Pinned action SHAs
-#   - Least-privilege permissions
-#   - persist-credentials: false
-#   - BASH_ENV=/dev/null
-#   - No user-controllable inputs in run: blocks
-#   - Concurrency control with cancel-in-progress
-#
-###############################################################
-
 name: xnuimagefuzzer-instrumented
 
 permissions:
@@ -36,8 +9,6 @@ concurrency:
 
 env:
   BASH_ENV: /dev/null
-  SCHEME: "XNU Image Fuzzer"
-  PROJECT: "XNU Image Fuzzer.xcodeproj"
 
 defaults:
   run:
@@ -49,24 +20,22 @@ on:
     paths:
       - '**/*.m'
       - '**/*.h'
-      - '**/*.c'
-      - '**/*.swift'
-      - '**/*.plist'
+      - '**/*.py'
       - '.github/scripts/**'
+      - '.github/workflows/instrumented.yml'
   pull_request:
     branches: [main, master]
     paths:
       - '**/*.m'
       - '**/*.h'
-      - '**/*.c'
-      - '**/*.swift'
+      - '**/*.py'
       - '.github/scripts/**'
+      - '.github/workflows/instrumented.yml'
   workflow_dispatch:
 
 jobs:
-  # Job 1: Instrumented macOS Build + Run + Coverage
-  instrumented-macos:
-    name: macOS (ASAN+UBSAN)
+  native-sanitizers-and-coverage:
+    name: Native ASAN, UBSAN, and coverage
     runs-on: macos-latest
     timeout-minutes: 30
     steps:
@@ -75,364 +44,24 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Credential hardening
+      - name: Test and run instrumented QA
         run: |
           set -euo pipefail
-          git config --global credential.helper ""
-          unset GITHUB_TOKEN || true
+          python3 -m unittest contrib/scripts/test_icc_container.py
+          .github/scripts/build-native.sh
 
-      - name: Show toolchain
-        run: |
-          set -euo pipefail
-          clang --version 2>&1 | sed -n '1,2p'
-          xcodebuild -version
-          echo "---"
-          uname -m
-          sw_vers -productVersion
-          echo "LLVM tools:"
-          xcrun llvm-profdata show --version 2>&1 | sed -n '1p' || echo "llvm-profdata available"
-          xcrun llvm-cov show --version 2>&1 | sed -n '1p' || echo "llvm-cov available"
-
-      - name: Build Mac Catalyst with ASAN + UBSAN
-        run: |
-          set -euo pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination 'platform=macOS,variant=Mac Catalyst' \
-            -configuration Debug \
-            -derivedDataPath /tmp/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            CLANG_ADDRESS_SANITIZER=YES \
-            CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-            GCC_GENERATE_DEBUGGING_SYMBOLS=YES \
-            OTHER_CFLAGS='$(inherited) -fno-omit-frame-pointer' \
-            2>&1 | tee /tmp/xcodebuild-instrumented.log
-          echo "OK: Mac Catalyst instrumented build succeeded"
-
-          echo "## Instrumented Build (Mac Catalyst)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Setting | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Platform | macOS (Mac Catalyst) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| AddressSanitizer | Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| UndefinedBehaviorSanitizer | Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Frame Pointers | Preserved |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Debug Symbols | Enabled |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Code Coverage | See native-coverage job |" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Locate binary
-        id: locate
-        run: |
-          set -euo pipefail
-          # Find the Mac Catalyst binary
-          BINARY=$(find /tmp/DerivedData -name "XNU Image Fuzzer" -type f -perm +111 \
-            ! -path "*/XNU Image Fuzzer.app/Contents/Resources/*" \
-            | sed -n '1p')
-
-          if [ -z "$BINARY" ]; then
-            echo "ERROR: Binary not found in DerivedData"
-            find /tmp/DerivedData -name "*.app" -type d | sed -n '1,5p'
-            exit 1
-          fi
-
-          echo "binary=$BINARY" >> "$GITHUB_OUTPUT"
-          APP_DIR=$(dirname "$BINARY")
-          echo "app_dir=$APP_DIR" >> "$GITHUB_OUTPUT"
-          file "$BINARY"
-          echo "OK: Located: $BINARY"
-
-      - name: Static analysis
-        run: |
-          set -euo pipefail
-          xcodebuild analyze \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination 'platform=macOS,variant=Mac Catalyst' \
-            -configuration Debug \
-            -derivedDataPath /tmp/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            CLANG_ADDRESS_SANITIZER=YES \
-            CLANG_UNDEFINED_BEHAVIOR_SANITIZER=YES \
-            CLANG_ANALYZER_OUTPUT=text \
-            CLANG_ANALYZER_OUTPUT_DIR=/tmp/analyzer-output \
-            RUN_CLANG_STATIC_ANALYZER=YES \
-            2>&1 | tee /tmp/xcodebuild-analyze.log
-
-          WARNINGS=$(grep -c "warning:" /tmp/xcodebuild-analyze.log 2>/dev/null || echo "0")
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Static Analysis" >> "$GITHUB_STEP_SUMMARY"
-          echo "Warnings: $WARNINGS" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run fuzzer under sanitizers
-        timeout-minutes: 5
-        run: |
-          set -euo pipefail
-          BINARY="${{ steps.locate.outputs.binary }}"
-          # Derive .app bundle path from binary inside Contents/MacOS/
-          APP_BUNDLE=$(echo "$BINARY" | sed 's|/Contents/MacOS/.*||')
-          mkdir -p /tmp/sanitizer-logs /tmp/fuzzed-output
-
-          export FUZZ_OUTPUT_DIR="/tmp/fuzzed-output"
-          export ASAN_OPTIONS="detect_leaks=0:halt_on_error=0:print_stats=1:log_path=/tmp/sanitizer-logs/asan"
-          export UBSAN_OPTIONS="print_stacktrace=1:halt_on_error=0:log_path=/tmp/sanitizer-logs/ubsan"
-
-          launchctl setenv FUZZ_OUTPUT_DIR "$FUZZ_OUTPUT_DIR"
-          launchctl setenv ASAN_OPTIONS "$ASAN_OPTIONS"
-          launchctl setenv UBSAN_OPTIONS "$UBSAN_OPTIONS"
-          sleep 1
-
-          echo "Launching instrumented Mac Catalyst app: $APP_BUNDLE"
-
-          open --env FUZZ_OUTPUT_DIR="$FUZZ_OUTPUT_DIR" \
-               --env ASAN_OPTIONS="$ASAN_OPTIONS" \
-               --env UBSAN_OPTIONS="$UBSAN_OPTIONS" \
-               "$APP_BUNDLE" &
-          OPEN_PID=$!
-          disown $OPEN_PID
-          echo "OK: App launched (open PID $OPEN_PID), waiting for fuzzing to complete..."
-
-          # Poll for output files (fuzzing runs in viewDidLoad)
-          # 17 specs x 6 files each (seed + corrupted + 4 format variants) = 102 expected
-          for i in $(seq 1 120); do
-            FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$FILE_COUNT" -ge 80 ]; then
-              echo "OK: Found $FILE_COUNT files after ${i}s"
-              break
-            fi
-            if [ "$((i % 10))" -eq 0 ]; then
-              echo "INFO: ${FILE_COUNT} files after ${i}s..."
-            fi
-            sleep 1
-          done
-
-          # Extra time for last files to flush to disk
-          sleep 5
-
-          # Terminate app gracefully for profraw flush:
-          # SIGINT triggers atexit() handlers (including llvm profraw writer)
-          # SIGTERM does NOT trigger atexit() - so SIGINT first, then SIGTERM fallback
-          # Use pgrep -x for exact process name match (avoids matching grep/open/shell)
-          APP_PIDS=$(pgrep -x "XNU Image Fuzzer" 2>/dev/null || true)
-          if [ -n "$APP_PIDS" ]; then
-            for APP_PID in $APP_PIDS; do
-              echo "Sending SIGINT to app (PID $APP_PID) for profraw flush..."
-              kill -INT "$APP_PID" 2>/dev/null || true
-            done
-            sleep 3
-
-            # Check if any instance still running
-            for APP_PID in $APP_PIDS; do
-              if kill -0 "$APP_PID" 2>/dev/null; then
-                echo "App still running (PID $APP_PID), sending SIGTERM..."
-                kill "$APP_PID" 2>/dev/null || true
-              fi
-            done
-            sleep 2
-          fi
-
-          # Check for profraw files (not expected from xcodebuild Mac Catalyst)
-          echo "Note: coverage collected in native-coverage job, not here"
-
-          # Count outputs
-          FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "Generated $FILE_COUNT fuzzed images"
-          ls -la /tmp/fuzzed-output/ 2>/dev/null || true
-
-          # Report sanitizer findings
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "## Sanitizer Findings" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-
-          ASAN_COUNT=0
-          UBSAN_COUNT=0
-          if ls /tmp/sanitizer-logs/asan.* 1>/dev/null 2>&1; then
-            ASAN_COUNT=$(grep -c "ERROR: AddressSanitizer" /tmp/sanitizer-logs/asan.* 2>/dev/null || echo "0")
-            echo "### AddressSanitizer" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            head -100 /tmp/sanitizer-logs/asan.* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if ls /tmp/sanitizer-logs/ubsan.* 1>/dev/null 2>&1; then
-            UBSAN_COUNT=$(grep -c "runtime error:" /tmp/sanitizer-logs/ubsan.* 2>/dev/null || echo "0")
-            echo "### UndefinedBehaviorSanitizer" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            head -100 /tmp/sanitizer-logs/ubsan.* >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ASAN findings | ${ASAN_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| UBSAN findings | ${UBSAN_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
-
-          # Ensure artifact directories have at least a summary file
-          echo "ASAN: ${ASAN_COUNT}, UBSAN: ${UBSAN_COUNT}, Images: ${FILE_COUNT}" \
-            > /tmp/sanitizer-logs/summary.txt
-          cp /tmp/sanitizer-logs/summary.txt /tmp/fuzzer-output.log
-
-      - name: Validate output quality
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "## Output Quality Validation" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-
-          TOTAL=0
-          VALID=0
-          INVALID=0
-          ZERO_SIZE=0
-
-          echo "| File | Size | Format | Dimensions | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|------|------|--------|------------|--------|" >> "$GITHUB_STEP_SUMMARY"
-
-          for f in /tmp/fuzzed-output/*; do
-            [ -f "$f" ] || continue
-            TOTAL=$((TOTAL + 1))
-            NAME=$(basename "$f")
-            SIZE=$(stat -f%z "$f" 2>/dev/null || stat --printf="%s" "$f" 2>/dev/null || echo "0")
-
-            if [ "$SIZE" -eq 0 ]; then
-              ZERO_SIZE=$((ZERO_SIZE + 1))
-              INVALID=$((INVALID + 1))
-              echo "| $NAME | 0 B | - | - | EMPTY |" >> "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-
-            # Use macOS sips for format/dimensions
-            FORMAT=$(sips -g format "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "unknown")
-            WIDTH=$(sips -g pixelWidth "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "?")
-            HEIGHT=$(sips -g pixelHeight "$f" 2>/dev/null | tail -1 | awk '{print $2}' || echo "?")
-
-            # Verify magic bytes with file(1)
-            FILETYPE=$(file -b "$f" | cut -c1-40)
-
-            if [ "$FORMAT" != "unknown" ] && [ "$WIDTH" != "?" ] && [ "$HEIGHT" != "?" ]; then
-              VALID=$((VALID + 1))
-              STATUS="OK"
-            else
-              INVALID=$((INVALID + 1))
-              STATUS="WARN $FILETYPE"
-            fi
-
-            SIZE_H=$(numfmt --to=iec "$SIZE" 2>/dev/null || echo "${SIZE} B")
-            echo "| $NAME | $SIZE_H | $FORMAT | ${WIDTH}x${HEIGHT} | $STATUS |" >> "$GITHUB_STEP_SUMMARY"
-          done
-
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Count |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Total files | $TOTAL |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Valid images | $VALID |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Invalid/unknown | $INVALID |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Zero-size files | $ZERO_SIZE |" >> "$GITHUB_STEP_SUMMARY"
-
-          if [ "$TOTAL" -eq 0 ]; then
-            echo "WARN: No fuzzed images produced - fuzzer may not have run long enough" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Upload sanitizer logs
-        if: always()
+      - name: Upload coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: sanitizer-logs
-          path: |
-            /tmp/sanitizer-logs/
-            /tmp/fuzzer-output.log
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Upload instrumented app
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: xnuimagefuzzer-instrumented-app
-          path: /tmp/DerivedData/**/Build/Products/Debug-maccatalyst/XNU Image Fuzzer.app
-          retention-days: 14
-          if-no-files-found: warn
-
-      - name: Upload fuzzed images
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: fuzzed-images-instrumented
-          path: /tmp/fuzzed-output/
-          retention-days: 14
-          if-no-files-found: warn
-
-  # Job 2: Native clang Build + Run + Coverage
-  # Xcode's CLANG_ENABLE_CODE_COVERAGE=YES does NOT inject
-  # -fprofile-instr-generate for Mac Catalyst. This job compiles
-  # directly with clang, producing real profraw/llvm-cov output.
-  native-coverage:
-    name: Native Coverage (clang arm64)
-    runs-on: macos-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Credential hardening
-        run: |
-          set -euo pipefail
-          git config --global credential.helper ""
-          unset GITHUB_TOKEN || true
-
-      - name: Show toolchain
-        run: |
-          set -euo pipefail
-          clang --version 2>&1 | sed -n '1p'
-          xcodebuild -version 2>&1 | sed -n '1p'
-          uname -m
-          xcrun llvm-profdata show --version 2>&1 | sed -n '1p'
-
-      - name: Build + Run + Coverage
-        run: |
-          set -euo pipefail
-          .github/scripts/build-native.sh 2>&1 | tee /tmp/build-native.log
-
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "## Native Coverage (clang arm64)" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          cat /tmp/coverage-report/summary.txt >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-          # Report sanitizer findings
-          ASAN_HITS=$(grep -c "ASAN findings:" /tmp/build-native.log 2>/dev/null || true)
-          UBSAN_HITS=$(grep -c "UBSAN findings:" /tmp/build-native.log 2>/dev/null || true)
-          FILE_COUNT=$(find /tmp/fuzzed-output -type f 2>/dev/null | wc -l | tr -d ' ')
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Fuzzed images | ${FILE_COUNT} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| ASAN findings | ${ASAN_HITS:-0} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| UBSAN findings | ${UBSAN_HITS:-0} |" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: native-coverage-report
+          name: native-coverage
           path: /tmp/coverage-report/
-          retention-days: 30
-          if-no-files-found: warn
+          retention-days: 14
+          if-no-files-found: error
 
-      - name: Upload fuzzed images
-        if: always()
+      - name: Upload verified QA corpus
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: native-fuzzed-images
-          path: /tmp/fuzzed-output/
+          name: native-verified-image-icc-qa
+          path: /tmp/fuzzed-output/corpus/
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error

@@ -7,7 +7,7 @@
 #
 # Artifacts included:
 #   - iOS Simulator app bundle (.app, zipped)
-#   - Fuzzed image corpus (sample test images)
+#   - Verified image and ICC QA corpus
 #   - Build metadata (Xcode version, checksums)
 #
 # Security hardening:
@@ -22,7 +22,7 @@
 name: xnuimagefuzzer-release
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -84,7 +84,7 @@ jobs:
             VERSION="dev-$(git rev-parse --short HEAD)"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "📦 Building release: ${VERSION}"
+          echo "Building release: ${VERSION}"
 
       - name: Show Xcode version
         id: xcode
@@ -110,7 +110,7 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             GCC_TREAT_WARNINGS_AS_ERRORS=YES \
             2>&1 | tee /tmp/xcodebuild-release.log
-          echo "✅ Release build succeeded"
+          echo "Release build succeeded"
 
       - name: Verify build artifacts
         id: verify
@@ -130,11 +130,11 @@ jobs:
 
           APP_PATH="$BUILD_DIR/XNU Image Fuzzer.app"
           if [ -d "$APP_PATH" ]; then
-            echo "✅ App bundle: $APP_PATH"
+            echo "App bundle: $APP_PATH"
             file "$APP_PATH/XNU Image Fuzzer"
             echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
           else
-            echo "❌ App bundle not found"
+            echo "ERROR: App bundle not found"
             exit 1
           fi
 
@@ -144,7 +144,7 @@ jobs:
           APP_PATH="${{ steps.verify.outputs.app_path }}"
           cd "$(dirname "$APP_PATH")"
           zip -r /tmp/XNUImageFuzzer-Simulator.zip "XNU Image Fuzzer.app"
-          echo "📦 App bundle packaged"
+          echo "App bundle packaged"
           ls -lh /tmp/XNUImageFuzzer-Simulator.zip
 
       - name: Run static analysis
@@ -162,13 +162,13 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             RUN_CLANG_STATIC_ANALYZER=YES \
             2>&1 | tee /tmp/xcodebuild-release-analyze.log | tail -10
-          echo "✅ Static analysis passed"
+          echo "Static analysis passed"
 
       - name: Generate build metadata
         run: |
           set -euo pipefail
           cat > /tmp/build-metadata.txt <<EOF
-          XNU Image Fuzzer — Build Metadata
+          XNU Image Fuzzer - Build Metadata
           ==================================
           Version:    ${{ steps.version.outputs.version }}
           Commit:     ${{ github.sha }}
@@ -198,7 +198,7 @@ jobs:
           retention-days: 90
 
   generate-corpus:
-    name: Generate Fuzzed Image Corpus
+    name: Generate Verified Image and ICC QA Corpus
     runs-on: macos-latest
     needs: build-release
     timeout-minutes: 20
@@ -214,98 +214,26 @@ jobs:
           git config --global credential.helper ""
           unset GITHUB_TOKEN || true
 
-      - name: Build for Simulator (Debug — for image generation)
+      - name: Generate and validate deterministic corpus
         run: |
           set -euo pipefail
-          xcodebuild build \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -destination "$DESTINATION" \
-            -configuration Debug \
-            -derivedDataPath /tmp/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ONLY_ACTIVE_ARCH=YES \
-            GCC_TREAT_WARNINGS_AS_ERRORS=YES \
-            2>&1 | tee /tmp/xcodebuild-corpus-build.log | tail -5
-          echo "✅ Debug build for image generation"
-
-      - name: Generate fuzzed images
-        run: |
-          set -euo pipefail
-          export FUZZ_OUTPUT_DIR="/tmp/fuzzed-release"
-          mkdir -p "$FUZZ_OUTPUT_DIR"
-
-          BUILD_DIR=$(xcodebuild \
-            -project "$PROJECT" \
-            -scheme "$SCHEME" \
-            -sdk iphonesimulator \
-            -configuration Debug \
-            -derivedDataPath /tmp/DerivedData \
-            -showBuildSettings \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>/dev/null | grep -m1 'BUILT_PRODUCTS_DIR' | awk '{print $3}')
-
-          BINARY="$BUILD_DIR/XNU Image Fuzzer.app/XNU Image Fuzzer"
-          if [ -f "$BINARY" ]; then
-            echo "🔧 Running fuzzer to generate corpus..."
-            "$BINARY" 2>&1 | tail -20 || true
-          else
-            echo "⚠️ Binary not found, generating corpus with Python fallback"
-          fi
-
-          # Python fallback — generate diverse seed images
-          python3 -c "
-          from PIL import Image
-          import struct, os
-          out = os.environ.get('FUZZ_OUTPUT_DIR', '/tmp/fuzzed-release')
-          configs = [
-            ('seed_rgba_8bit', 'RGBA', (256,256)),
-            ('seed_rgb_8bit', 'RGB', (512,512)),
-            ('seed_gray_8bit', 'L', (128,128)),
-            ('seed_16bit', 'I;16', (256,256)),
-            ('seed_wide', 'RGBA', (1920,1080)),
-            ('seed_square', 'RGBA', (1024,1024)),
-            ('seed_tiny', 'RGBA', (1,1)),
-            ('seed_strip', 'RGBA', (4096,1)),
-          ]
-          for name, mode, size in configs:
-            img = Image.new(mode, size)
-            pixels = img.load()
-            for y in range(size[1]):
-              for x in range(size[0]):
-                if mode == 'RGBA':
-                  pixels[x,y] = ((x*7+y*13)%256,(x*11+y*3)%256,(x*5+y*17)%256,255)
-                elif mode == 'RGB':
-                  pixels[x,y] = ((x*7+y*13)%256,(x*11+y*3)%256,(x*5+y*17)%256)
-                elif mode == 'L':
-                  pixels[x,y] = (x*y)%256
-                elif mode == 'I;16':
-                  pixels[x,y] = (x*y*3)%65536
-            img.save(f'{out}/{name}.png')
-            print(f'  ✅ {name}.png ({size[0]}x{size[1]} {mode})')
-          " 2>&1 || echo "⚠️ PIL not available"
-
-          COUNT=$(find "$FUZZ_OUTPUT_DIR" -type f \( -name '*.png' -o -name '*.jpg' -o -name '*.gif' -o -name '*.tiff' -o -name '*.bmp' \) | wc -l | tr -d ' ')
-          echo "📊 Generated ${COUNT} images for release corpus"
+          .github/scripts/generate-qa-images.sh \
+            /tmp/verified-image-icc-qa both both --seed 1
 
       - name: Package corpus
         run: |
           set -euo pipefail
           cd /tmp
-          tar czf fuzzed-image-corpus.tar.gz -C fuzzed-release .
-          ls -lh fuzzed-image-corpus.tar.gz
+          tar czf verified-image-icc-qa.tar.gz -C verified-image-icc-qa .
+          ls -lh verified-image-icc-qa.tar.gz
 
       - name: Upload corpus artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: fuzzed-image-corpus-${{ needs.build-release.outputs.version }}
-          path: /tmp/fuzzed-image-corpus.tar.gz
+          name: verified-image-icc-qa-${{ needs.build-release.outputs.version }}
+          path: /tmp/verified-image-icc-qa.tar.gz
           retention-days: 90
-          if-no-files-found: warn
+          if-no-files-found: error
 
   create-release:
     name: Create GitHub Release
@@ -334,20 +262,19 @@ jobs:
           VERSION="${{ needs.build-release.outputs.version }}"
           PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | sed -n '1,2p' | tail -1) || true
 
-          cat > /tmp/release-notes.md <<'NOTES_EOF'
-          ## XNU Image Fuzzer ${VERSION}
+          printf '## XNU Image Fuzzer %s\n\n' "$VERSION" > /tmp/release-notes.md
+          cat >> /tmp/release-notes.md <<'NOTES_EOF'
+          Deterministic image and ICC quality-assurance tooling for Apple image parsers.
 
-          iOS image fuzzing toolkit for security research on Apple image parsers.
-
-          ### 📦 Release Artifacts
+          ### Release Artifacts
 
           | Artifact | Description |
           |----------|-------------|
           | `XNUImageFuzzer-Simulator.zip` | iOS Simulator app bundle (Release build) |
-          | `fuzzed-image-corpus.tar.gz` | Sample fuzzed images for testing image parsers |
+          | `verified-image-icc-qa.tar.gz` | Validated clean/fuzzed images with exact ICC/no-ICC pairs and manifest |
           | `build-metadata.txt` | Build environment details and checksums |
 
-          ### 🔧 Usage
+          ### Usage
 
           **iOS Simulator:**
           ```bash
@@ -355,13 +282,13 @@ jobs:
           xcrun simctl install booted "XNU Image Fuzzer.app"
           ```
 
-          **Fuzzed Image Corpus:**
+          **Verified Image and ICC QA Corpus:**
           ```bash
-          tar xzf fuzzed-image-corpus.tar.gz -C ./test-images/
-          # Use these as seed inputs for image parser fuzzing
+          tar xzf verified-image-icc-qa.tar.gz -C ./test-images/
+          python3 contrib/scripts/validate_qa_corpus.py ./test-images/
           ```
 
-          ### 🛡️ Security
+          ### Security
 
           - Built with `GCC_TREAT_WARNINGS_AS_ERRORS=YES`
           - Clang static analysis passed
@@ -369,23 +296,23 @@ jobs:
           NOTES_EOF
 
           if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$VERSION" ]; then
-            echo "" >> /tmp/release-notes.md
-            echo "### 📝 Changes since ${PREV_TAG}" >> /tmp/release-notes.md
-            echo "" >> /tmp/release-notes.md
-            git log "${PREV_TAG}..HEAD" --oneline --no-merges | sed -n '1,30p' >> /tmp/release-notes.md
+            {
+              echo ""
+              echo "### Changes since ${PREV_TAG}"
+              echo ""
+              git log "${PREV_TAG}..HEAD" --oneline --no-merges | sed -n '1,30p'
+            } >> /tmp/release-notes.md
           fi
 
       - name: Prepare release assets
         run: |
           set -euo pipefail
           mkdir -p /tmp/assets
-          VERSION="${{ needs.build-release.outputs.version }}"
-
           # Flatten downloaded artifacts into assets dir
           find /tmp/release-artifacts -type f | while read -r f; do
             cp "$f" /tmp/assets/
           done
-          echo "📦 Release assets:"
+          echo "Release assets:"
           ls -lh /tmp/assets/
 
       - name: Create GitHub Release
@@ -396,7 +323,7 @@ jobs:
           VERSION="${{ needs.build-release.outputs.version }}"
 
           if gh release view "${VERSION}" >/dev/null 2>&1; then
-            echo "ℹ️  Release ${VERSION} exists — uploading assets"
+            echo "Release ${VERSION} exists - uploading assets"
             gh release upload "${VERSION}" /tmp/assets/* --clobber
           else
             gh release create "${VERSION}" \
@@ -406,4 +333,4 @@ jobs:
               /tmp/assets/*
           fi
 
-          echo "✅ Release ready: ${VERSION}"
+          echo "Release ready: ${VERSION}"

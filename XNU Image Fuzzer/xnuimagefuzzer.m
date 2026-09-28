@@ -647,6 +647,8 @@ void performChainedFuzzing(NSString *inputPath, int iterations, BOOL allPermutat
 void performBatchFuzzing(NSString *inputDir, int iterations);
 void performPipelineFuzzing(NSString *inputDir, int iterations);
 NSArray<NSString *>* scanDirectoryForImages(NSString *directory);
+BOOL performCleanImageGeneration(void);
+BOOL writeDeterministicallyFuzzedImage(NSString *inputPath, NSString *outputPath, uint32_t seed);
 
 #pragma mark - IO Handling
 
@@ -1246,13 +1248,13 @@ void applyEnhancedFuzzingToBitmapContextWithFloats(float *rawData, size_t width,
                     case 0:
                         // Additive noise
                         for (int i = 0; i < 4; i++) {
-                            rawData[pixelIndex + i] += ((float)arc4random() / UINT32_MAX * 2.0f - 1.0f); // Noise range [-1, 1]
+                            rawData[pixelIndex + i] += ((float)arc4random() / (float)UINT32_MAX * 2.0f - 1.0f); // Noise range [-1, 1]
                         }
                         break;
                     case 1:
                         // Multiplicative noise (scale)
                         for (int i = 0; i < 4; i++) {
-                            rawData[pixelIndex + i] *= ((float)arc4random() / UINT32_MAX * 2.0f); // Scale range [0, 2]
+                            rawData[pixelIndex + i] *= ((float)arc4random() / (float)UINT32_MAX * 2.0f); // Scale range [0, 2]
                         }
                         break;
                     case 2:
@@ -1865,18 +1867,202 @@ unsigned long hashString(const char* str) {
 /*!
  * @brief Generates a random image and processes it with all permutation strategies.
  *
- * @details This function defines the dimensions and image type for a generated image,
- * creates the image data, writes it to a temporary file, loads the image, and processes
- * it with permutation -1, indicating all permutations.
- *
- * - **Image Generation**: Creates a random image with specified dimensions and type.
- * - **File Handling**: Writes the generated image data to a temporary file.
- * - **Image Loading**: Loads the generated image from the file.
- * - **Image Processing**: Processes the image with all permutations.
- *
- * @note This function is used when no command-line arguments are provided to automatically
- * generate and process an image.
+ * @details The supported QA path generates deterministic pixel charts and encodes
+ * valid PNG, JPEG, and TIFF containers without requesting ICC metadata. Pixel
+ * mutation is a separate seeded operation; ICC insertion is performed and verified
+ * later by the container-level QA scripts.
  */
+static uint32_t qaNextRandom(uint32_t *state) {
+    uint32_t value = *state ? *state : 0x9E3779B9u;
+    value ^= value << 13;
+    value ^= value >> 17;
+    value ^= value << 5;
+    *state = value;
+    return value;
+}
+
+static CGImageRef createDeterministicQAImage(size_t width, size_t height, uint32_t style) {
+    if (!width || !height || width > SIZE_MAX / 4 || height > SIZE_MAX / (width * 4)) {
+        return NULL;
+    }
+    size_t bytesPerRow = width * 4;
+    size_t byteCount = bytesPerRow * height;
+    unsigned char *pixels = (unsigned char *)calloc(byteCount, 1);
+    if (!pixels) return NULL;
+
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            size_t offset = y * bytesPerRow + x * 4;
+            pixels[offset] = (unsigned char)((x * 17 + y * 3 + style * 29) & 0xFF);
+            pixels[offset + 1] = (unsigned char)((x * 5 + y * 19 + style * 47) & 0xFF);
+            pixels[offset + 2] = (unsigned char)((x * 11 + y * 7 + style * 61) & 0xFF);
+            pixels[offset + 3] = 255;
+        }
+    }
+
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    if (!colorSpace) {
+        free(pixels);
+        return NULL;
+    }
+    CGContextRef context = CGBitmapContextCreate(
+        pixels, width, height, 8, bytesPerRow, colorSpace,
+        (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big);
+    CGColorSpaceRelease(colorSpace);
+    if (!context) {
+        free(pixels);
+        return NULL;
+    }
+    CGImageRef image = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    free(pixels);
+    return image;
+}
+
+static NSString *qaOutputDirectory(void) {
+    const char *cleanDir = getenv("XNU_IMAGE_OUTPUT_DIR");
+    if (cleanDir && cleanDir[0]) {
+        return [NSString stringWithUTF8String:cleanDir];
+    }
+    const char *legacyDir = getenv("FUZZ_OUTPUT_DIR");
+    if (legacyDir && legacyDir[0]) {
+        return [NSString stringWithUTF8String:legacyDir];
+    }
+    return [NSSearchPathForDirectoriesInDomains(
+        NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+}
+
+BOOL performCleanImageGeneration(void) {
+    struct {
+        const char *name;
+        size_t width;
+        size_t height;
+        uint32_t style;
+    } cases[] = {
+        {"chart-square", 300, 300, 0},
+        {"chart-wide", 640, 360, 1},
+        {"chart-small", 32, 32, 2},
+        {"chart-single-pixel", 1, 1, 3},
+    };
+    struct {
+        const char *extension;
+        CFStringRef type;
+    } formats[] = {
+        {"png", (__bridge CFStringRef)UTTypePNG.identifier},
+        {"jpg", (__bridge CFStringRef)UTTypeJPEG.identifier},
+        {"tiff", (__bridge CFStringRef)UTTypeTIFF.identifier},
+    };
+
+    NSString *outputDirectory = qaOutputDirectory();
+    NSError *directoryError = nil;
+    if (![[NSFileManager defaultManager] createDirectoryAtPath:outputDirectory
+                                   withIntermediateDirectories:YES
+                                                    attributes:nil
+                                                         error:&directoryError]) {
+        NSLog(@"Clean generation failed to create %@: %@", outputDirectory,
+              directoryError.localizedDescription);
+        return NO;
+    }
+
+    NSUInteger outputCount = 0;
+    for (NSUInteger caseIndex = 0; caseIndex < sizeof(cases) / sizeof(cases[0]); caseIndex++) {
+        CGImageRef image = createDeterministicQAImage(
+            cases[caseIndex].width, cases[caseIndex].height, cases[caseIndex].style);
+        if (!image) {
+            NSLog(@"Clean generation failed for %s", cases[caseIndex].name);
+            continue;
+        }
+        for (NSUInteger formatIndex = 0;
+             formatIndex < sizeof(formats) / sizeof(formats[0]); formatIndex++) {
+            NSData *data = encodeImageAs(image, formats[formatIndex].type, nil);
+            if (!data) {
+                NSLog(@"Clean encoding failed for %s.%s", cases[caseIndex].name,
+                      formats[formatIndex].extension);
+                continue;
+            }
+            NSString *fileName = [NSString stringWithFormat:@"clean-%s.%s",
+                cases[caseIndex].name, formats[formatIndex].extension];
+            NSString *path = [outputDirectory stringByAppendingPathComponent:fileName];
+            if (![data writeToFile:path atomically:YES]) {
+                NSLog(@"Clean generation failed to write %@", path);
+                continue;
+            }
+            outputCount++;
+            NSLog(@"Clean image saved: %@ (%lu bytes)", path,
+                  (unsigned long)data.length);
+        }
+        CGImageRelease(image);
+    }
+    NSLog(@"Clean generation complete: %lu deterministic images", (unsigned long)outputCount);
+    return outputCount == (sizeof(cases) / sizeof(cases[0])) *
+                          (sizeof(formats) / sizeof(formats[0]));
+}
+
+BOOL writeDeterministicallyFuzzedImage(NSString *inputPath, NSString *outputPath, uint32_t seed) {
+    NSData *inputData = [NSData dataWithContentsOfFile:inputPath];
+    if (!inputData) return NO;
+    CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)inputData, NULL);
+    if (!source) return NO;
+    CGImageRef inputImage = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    CFRelease(source);
+    if (!inputImage) return NO;
+
+    size_t width = CGImageGetWidth(inputImage);
+    size_t height = CGImageGetHeight(inputImage);
+    if (!width || !height || width > SIZE_MAX / 4 || height > SIZE_MAX / (width * 4)) {
+        CGImageRelease(inputImage);
+        return NO;
+    }
+    size_t bytesPerRow = width * 4;
+    unsigned char *pixels = (unsigned char *)calloc(height * bytesPerRow, 1);
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = colorSpace ? CGBitmapContextCreate(
+        pixels, width, height, 8, bytesPerRow, colorSpace,
+        (CGBitmapInfo)kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big) : NULL;
+    if (colorSpace) CGColorSpaceRelease(colorSpace);
+    if (!pixels || !context) {
+        if (context) CGContextRelease(context);
+        free(pixels);
+        CGImageRelease(inputImage);
+        return NO;
+    }
+    CGContextDrawImage(context, CGRectMake(0, 0, width, height), inputImage);
+    CGImageRelease(inputImage);
+
+    uint32_t state = seed ? seed : 1;
+    size_t pixelCount = width * height;
+    size_t mutationCount = MAX((size_t)1, pixelCount / 100);
+    for (size_t index = 0; index < mutationCount; index++) {
+        size_t pixel = qaNextRandom(&state) % pixelCount;
+        size_t channel = qaNextRandom(&state) % 3;
+        unsigned char mask = (unsigned char)(1u << (qaNextRandom(&state) % 8));
+        pixels[pixel * 4 + channel] ^= mask;
+    }
+
+    CGImageRef outputImage = CGBitmapContextCreateImage(context);
+    CGContextRelease(context);
+    free(pixels);
+    if (!outputImage) return NO;
+
+    NSString *extension = [[outputPath pathExtension] lowercaseString];
+    CFStringRef type = NULL;
+    if ([extension isEqualToString:@"png"]) {
+        type = (__bridge CFStringRef)UTTypePNG.identifier;
+    } else if ([extension isEqualToString:@"jpg"] || [extension isEqualToString:@"jpeg"]) {
+        type = (__bridge CFStringRef)UTTypeJPEG.identifier;
+    } else if ([extension isEqualToString:@"tif"] || [extension isEqualToString:@"tiff"]) {
+        type = (__bridge CFStringRef)UTTypeTIFF.identifier;
+    }
+    if (!type) {
+        CGImageRelease(outputImage);
+        return NO;
+    }
+    NSData *outputData = encodeImageAs(outputImage, type, nil);
+    CGImageRelease(outputImage);
+    if (!outputData) return NO;
+    return [outputData writeToFile:outputPath atomically:YES];
+}
+
 void performAllImagePermutations(void) {
     // Generate diverse seed images with varied dimensions and process each
     // through a different bitmap context permutation for maximum code coverage.
@@ -3702,33 +3888,73 @@ int main(int argc, const char * argv[]) {
             set_fn(profFile);
         }
 
-        // Detect if launched with user-provided command-line arguments for image processing
-        // New CLI modes: --input-dir <dir> [--iterations N]
-        //                --chain <image> [--iterations N]
-        //                <imagePath> <permutation>  (legacy)
-        //                (no args) → performAllImagePermutations
+        // Clean generation is the default. Mutation is always explicit.
 
         // Parse named arguments
         NSString *inputDir = nil;
         NSString *chainInput = nil;
         NSString *pipelineDir = nil;
+        NSString *deterministicFuzzInput = nil;
+        NSString *deterministicFuzzOutput = nil;
+        uint32_t deterministicSeed = 1;
+        BOOL cleanMode = NO;
+        BOOL legacyDefaultFuzz = NO;
+        BOOL parseError = NO;
         int iterations = 3; // default chained iterations
 
         for (int i = 1; i < argc; i++) {
-            if (strcmp(argv[i], "--input-dir") == 0 && i + 1 < argc) {
+            if (strcmp(argv[i], "--legacy-input-dir") == 0 && i + 1 < argc) {
                 inputDir = [NSString stringWithUTF8String:argv[++i]];
-            } else if (strcmp(argv[i], "--chain") == 0 && i + 1 < argc) {
+            } else if (strcmp(argv[i], "--legacy-chain") == 0 && i + 1 < argc) {
                 chainInput = [NSString stringWithUTF8String:argv[++i]];
-            } else if (strcmp(argv[i], "--pipeline") == 0 && i + 1 < argc) {
+            } else if (strcmp(argv[i], "--legacy-pipeline") == 0 && i + 1 < argc) {
                 pipelineDir = [NSString stringWithUTF8String:argv[++i]];
+            } else if (strcmp(argv[i], "--clean") == 0) {
+                cleanMode = YES;
+            } else if (strcmp(argv[i], "--legacy-default-fuzz") == 0) {
+                legacyDefaultFuzz = YES;
+            } else if (strcmp(argv[i], "--fuzz-image") == 0 && i + 1 < argc) {
+                deterministicFuzzInput = [NSString stringWithUTF8String:argv[++i]];
+            } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+                deterministicFuzzOutput = [NSString stringWithUTF8String:argv[++i]];
+            } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+                deterministicSeed = (uint32_t)strtoul(argv[++i], NULL, 10);
+                if (!deterministicSeed) deterministicSeed = 1;
             } else if (strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
                 iterations = atoi(argv[++i]);
                 if (iterations < 1) iterations = 1;
                 if (iterations > MAX_ITERATIONS) iterations = MAX_ITERATIONS;
+            } else if (argv[i][0] == '-') {
+                NSLog(@"Unknown or incomplete option: %s", argv[i]);
+                parseError = YES;
             }
         }
 
-        if (pipelineDir) {
+        int namedModeCount = (inputDir ? 1 : 0) + (chainInput ? 1 : 0) +
+            (pipelineDir ? 1 : 0) + (deterministicFuzzInput ? 1 : 0) +
+            (cleanMode ? 1 : 0) + (legacyDefaultFuzz ? 1 : 0);
+        if (parseError || namedModeCount > 1 ||
+            (deterministicFuzzOutput && !deterministicFuzzInput)) {
+            NSLog(@"Choose exactly one supported mode and provide every required value.");
+            return 2;
+        }
+
+        if (deterministicFuzzInput) {
+            if (!deterministicFuzzOutput) {
+                NSLog(@"--fuzz-image requires --output");
+                return 2;
+            }
+            BOOL ok = writeDeterministicallyFuzzedImage(
+                deterministicFuzzInput, deterministicFuzzOutput, deterministicSeed);
+            NSLog(@"Deterministic pixel fuzz %@ (seed %u): %@", ok ? @"complete" : @"failed",
+                  deterministicSeed, deterministicFuzzOutput);
+            return ok ? 0 : 1;
+        } else if (cleanMode || argc == 1) {
+            return performCleanImageGeneration() ? 0 : 1;
+        } else if (legacyDefaultFuzz) {
+            performAllImagePermutations();
+            return 0;
+        } else if (pipelineDir) {
             // Pipeline fuzzing: clean → fuzz → ICC → combo → chain
             NSLog(@"Pipeline fuzzing mode: %@ (%d iterations)", pipelineDir, iterations);
             performPipelineFuzzing(pipelineDir, iterations);
@@ -3784,29 +4010,16 @@ int main(int argc, const char * argv[]) {
             }
 
             return 0; // Successful completion of command-line image processing
-        } else if (argc == 1 || (argc > 2 && argv[1][0] == '-')) {
-            // Perform all image permutations if no valid user-provided arguments are present
-            dump_comm_page();
-            dumpDeviceInfo();
-            dumpMacDeviceInfo();
-            performAllImagePermutations();
-
-            // Flush LLVM coverage data before exit (dlsym, no-op without instrumentation)
-            llvm_profile_write_file_fn write_fn2 = (llvm_profile_write_file_fn)dlsym(RTLD_DEFAULT, "__llvm_profile_write_file");
-            if (write_fn2) {
-                NSLog(@"Flushing LLVM coverage data...");
-                write_fn2();
-            }
-
-            return 0; // Successful completion of image permutation fuzzing
         } else {
             NSLog(@"Incorrect usage. Expected valid arguments, got %d", argc - 1);
             NSLog(@"Usage: %s <imagePath> <permutation>", argv[0]);
-            NSLog(@"       %s --pipeline <directory> [--iterations N]", argv[0]);
-            NSLog(@"       %s --chain <imagePath> [--iterations N]", argv[0]);
-            NSLog(@"       %s --input-dir <directory> [--iterations N]", argv[0]);
-            NSLog(@"       %s  (no args = generate all permutations)", argv[0]);
-            NSLog(@"Environment: FUZZ_OUTPUT_DIR, FUZZ_ICC_DIR, LLVM_PROFILE_FILE");
+            NSLog(@"       %s --legacy-pipeline <directory> [--iterations N]", argv[0]);
+            NSLog(@"       %s --legacy-chain <imagePath> [--iterations N]", argv[0]);
+            NSLog(@"       %s --legacy-input-dir <directory> [--iterations N]", argv[0]);
+            NSLog(@"       %s --fuzz-image <image> --output <image> [--seed N]", argv[0]);
+            NSLog(@"       %s --legacy-default-fuzz", argv[0]);
+            NSLog(@"       %s --clean  (also the no-argument default)", argv[0]);
+            NSLog(@"Environment: XNU_IMAGE_OUTPUT_DIR, FUZZ_OUTPUT_DIR, FUZZ_ICC_DIR, LLVM_PROFILE_FILE");
             return 1; // Error due to incorrect usage
         }
     }
@@ -4757,7 +4970,7 @@ void createBitmapContextHDRFloatComponents(CGImageRef cgImg) {
     for (size_t i = 0; i < totalFloats; i++) {
         float v = rawData[i];
         if (isnan(v) || isinf(v)) {
-            rawData[i] = (float)arc4random() / UINT32_MAX;
+            rawData[i] = (float)arc4random() / (float)UINT32_MAX;
         } else {
             v = fmodf(fabsf(v), 1.0f);
             rawData[i] = v;
@@ -5291,7 +5504,7 @@ void createBitmapContext32BitFloat4Component(CGImageRef cgImg) {
     for (size_t i = 0; i < totalFloats; i++) {
         float v = floatData[i];
         if (isnan(v) || isinf(v)) {
-            floatData[i] = (float)arc4random() / UINT32_MAX;
+            floatData[i] = (float)arc4random() / (float)UINT32_MAX;
         } else {
             floatData[i] = fmodf(fabsf(v), 1.0f);
         }
@@ -5545,7 +5758,7 @@ void createBitmapContextHDRFloat16(CGImageRef cgImg) {
     for (size_t i = 0; i < totalFloats; i++) {
         float v = floatData[i];
         if (isnan(v) || isinf(v)) {
-            floatData[i] = (float)arc4random() / UINT32_MAX;
+            floatData[i] = (float)arc4random() / (float)UINT32_MAX;
         } else {
             floatData[i] = fmodf(fabsf(v), 1.0f);
         }

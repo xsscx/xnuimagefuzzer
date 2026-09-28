@@ -39,6 +39,7 @@ on:
       - '**/*.h'
       - '**/*.py'
       - '.github/scripts/**'
+      - '.github/workflows/code-quality.yml'
       - 'XNU Image Fuzzer/CMakeLists.txt'
   pull_request:
     branches: [main, master]
@@ -47,6 +48,7 @@ on:
       - '**/*.h'
       - '**/*.py'
       - '.github/scripts/**'
+      - '.github/workflows/code-quality.yml'
       - 'XNU Image Fuzzer/CMakeLists.txt'
   workflow_dispatch:
 
@@ -197,7 +199,7 @@ jobs:
       - name: Python unit tests
         run: |
           set -euo pipefail
-          python3 -m unittest discover -s tests -p 'test_*.py'
+          python3 -m unittest contrib/scripts/test_icc_container.py
 
       - name: Shell script syntax check
         run: |

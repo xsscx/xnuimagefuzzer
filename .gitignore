@@ -114,3 +114,6 @@ Network Trash Folder
 Temporary Items
 .apdisk
 __pycache__/
+*.profraw
+generated-images/
+fuzzed-images/
